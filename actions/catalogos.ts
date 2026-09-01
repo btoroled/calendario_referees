@@ -67,3 +67,34 @@ export async function crearLiga(input: { nombre: string; codigo: string; region_
 
   revalidatePath('/admin/catalogos/ligas')
 }
+
+export type Club = {
+  id: string
+  nombre: string
+  codigo: string
+  region_id: string
+  region: { nombre: string } | null
+}
+
+export async function listClubes(): Promise<Club[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('club')
+    .select('id, nombre, codigo, region_id, region:region(nombre)')
+    .order('nombre')
+  if (error) throw new Error(error.message)
+  return data as unknown as Club[]
+}
+
+export async function crearClub(input: { nombre: string; codigo: string; region_id: string }): Promise<void> {
+  const perfil = await getProfile()
+  if (!perfil || (perfil.rol !== ROLES.ADMIN_NACIONAL && perfil.rol !== ROLES.ADMIN_REGIONAL)) {
+    throw new Error('No autorizado para crear clubes.')
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('club').insert(input)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/admin/catalogos/clubes')
+}
