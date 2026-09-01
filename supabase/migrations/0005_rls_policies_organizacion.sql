@@ -55,4 +55,7 @@ with check (
 );
 
 create policy temporada_update on temporada for update
-using (liga_id in (select id from liga));
+using (
+  fn_rol() in ('admin_nacional', 'admin_regional')
+  and liga_id in (select id from liga)
+);
