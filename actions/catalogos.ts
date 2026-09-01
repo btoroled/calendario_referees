@@ -36,3 +36,34 @@ export async function crearRegion(input: { nombre: string; codigo: string }): Pr
 
   revalidatePath('/admin/catalogos/regiones')
 }
+
+export type Liga = {
+  id: string
+  nombre: string
+  codigo: string
+  region_id: string
+  region: { nombre: string } | null
+}
+
+export async function listLigas(): Promise<Liga[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('liga')
+    .select('id, nombre, codigo, region_id, region:region(nombre)')
+    .order('nombre')
+  if (error) throw new Error(error.message)
+  return data as unknown as Liga[]
+}
+
+export async function crearLiga(input: { nombre: string; codigo: string; region_id: string }): Promise<void> {
+  const perfil = await getProfile()
+  if (!perfil || (perfil.rol !== ROLES.ADMIN_NACIONAL && perfil.rol !== ROLES.ADMIN_REGIONAL)) {
+    throw new Error('No autorizado para crear ligas.')
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('liga').insert(input)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/admin/catalogos/ligas')
+}
