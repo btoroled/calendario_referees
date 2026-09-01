@@ -98,3 +98,41 @@ export async function crearClub(input: { nombre: string; codigo: string; region_
 
   revalidatePath('/admin/catalogos/clubes')
 }
+
+export type Referee = {
+  id: string
+  nombre: string
+  categoria: string
+  activo: boolean
+  club_id: string | null
+  region_id: string
+  club: { nombre: string } | null
+}
+
+export async function listReferees(): Promise<Referee[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('referee')
+    .select('id, nombre, categoria, activo, club_id, region_id, club:club(nombre)')
+    .order('nombre')
+  if (error) throw new Error(error.message)
+  return data as unknown as Referee[]
+}
+
+export async function crearReferee(input: {
+  nombre: string
+  categoria: string
+  club_id: string | null
+  region_id: string
+}): Promise<void> {
+  const perfil = await getProfile()
+  if (!perfil || (perfil.rol !== ROLES.ADMIN_NACIONAL && perfil.rol !== ROLES.ADMIN_REGIONAL)) {
+    throw new Error('No autorizado para crear referees.')
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('referee').insert({ ...input, activo: true })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/admin/catalogos/referees')
+}
