@@ -164,6 +164,78 @@ async function main() {
     .insert({ region_id: regionTest.id, nombre: 'No debería crearse', codigo: `NOPE-CLU-${sufijo}` })
   assert(insertClubForaneoError !== null, 'admin_regional de Lima no puede insertar clubes fuera de su región')
 
+  console.log('Caso: designador de Lima NO puede actualizar una región (regresión del bug de temporada_update)')
+  const { data: updateRegionData, error: updateRegionError } = await clienteDesignadorLima
+    .from('region')
+    .update({ nombre: 'Hackeada' })
+    .eq('id', LIMA_ID)
+    .select()
+  assert(
+    updateRegionError !== null || (updateRegionData ?? []).length === 0,
+    'designador no puede actualizar regiones (RLS lo bloquea)'
+  )
+
+  console.log('Caso: designador de Lima NO puede actualizar una liga')
+  const { data: updateLigaData, error: updateLigaError } = await clienteDesignadorLima
+    .from('liga')
+    .update({ nombre: 'Hackeada' })
+    .eq('id', '33333333-3333-3333-3333-333333333333')
+    .select()
+  assert(
+    updateLigaError !== null || (updateLigaData ?? []).length === 0,
+    'designador no puede actualizar ligas (RLS lo bloquea)'
+  )
+
+  console.log('Caso: designador de Lima NO puede actualizar una temporada (esto es lo que el bug de temporada_update permitía)')
+  const { data: updateTemporadaData, error: updateTemporadaError } = await clienteDesignadorLima
+    .from('temporada')
+    .update({ activa: false })
+    .eq('id', '44444444-4444-4444-4444-444444444444')
+    .select()
+  assert(
+    updateTemporadaError !== null || (updateTemporadaData ?? []).length === 0,
+    'designador no puede actualizar temporadas (RLS lo bloquea)'
+  )
+
+  console.log('Caso: admin_regional de Lima ve la Temporada 2026 (visibilidad en cascada vía liga)')
+  const { data: temporadasAdminRegional } = await clienteAdminRegionalLima.from('temporada').select('id')
+  assert(
+    (temporadasAdminRegional ?? []).some((t) => t.id === '44444444-4444-4444-4444-444444444444'),
+    'admin_regional de Lima ve la temporada de su liga'
+  )
+
+  console.log('Caso: designador de Lima NO puede actualizar un club de su propia región')
+  const { data: updateClubData, error: updateClubError } = await clienteDesignadorLima
+    .from('club')
+    .update({ nombre: 'Hackeado' })
+    .eq('id', clubLima.id)
+    .select()
+  assert(
+    updateClubError !== null || (updateClubData ?? []).length === 0,
+    'designador no puede actualizar clubes (RLS lo bloquea, solo admin_nacional/admin_regional)'
+  )
+
+  console.log('Caso: perfil — cada cliente ve su propio perfil')
+  const { data: perfilPropioDesignador } = await clienteDesignadorLima.from('perfil').select('id').eq('id', (await clienteDesignadorLima.auth.getUser()).data.user?.id ?? '')
+  assert((perfilPropioDesignador ?? []).length === 1, 'designador ve su propia fila de perfil (perfil_select_self)')
+
+  const emailEvaluadorTest = `evaluador-test-${sufijo}@test.local`
+  await crearUsuarioDePrueba({ email: emailEvaluadorTest, password, rol: 'evaluador', pais_id: null, region_id: regionTest.id })
+
+  console.log('Caso: admin_regional de Lima NO ve el perfil de un evaluador de la región de prueba')
+  const { data: perfilesAdminRegional } = await clienteAdminRegionalLima.from('perfil').select('id, email')
+  assert(
+    (perfilesAdminRegional ?? []).every((p) => p.email !== emailEvaluadorTest),
+    'admin_regional de Lima no ve perfiles de otra región (perfil_select_scope)'
+  )
+
+  console.log('Caso: admin_nacional SÍ ve el perfil de un evaluador de la región de prueba')
+  const { data: perfilesAdminNacional } = await clienteAdminNacional.from('perfil').select('id, email')
+  assert(
+    (perfilesAdminNacional ?? []).some((p) => p.email === emailEvaluadorTest),
+    'admin_nacional ve perfiles de cualquier región de su país (perfil_select_scope)'
+  )
+
   await admin.from('referee').delete().eq('region_id', LIMA_ID).eq('nombre', `Ref Lima ${sufijo}`)
   await admin.from('referee').delete().eq('region_id', regionTest.id).eq('nombre', `Ref Test ${sufijo}`)
   await admin.from('club').delete().eq('id', clubLima.id)
@@ -173,6 +245,7 @@ async function main() {
   await limpiarUsuarioDePrueba(emailAdminNacional)
   await limpiarUsuarioDePrueba(emailAdminRegionalLima)
   await limpiarUsuarioDePrueba(emailDesignadorLima)
+  await limpiarUsuarioDePrueba(emailEvaluadorTest)
 
   console.log(`\n${fallos === 0 ? 'TODOS LOS CASOS PASARON' : `${fallos} CASO(S) FALLARON`}`)
   process.exit(fallos === 0 ? 0 : 1)
