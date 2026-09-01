@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:rls": "tsx scripts/rls-test/run-rls-tests.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
