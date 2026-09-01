@@ -21,6 +21,8 @@ El MVP se implementa para la liga de **Perú**, pero el modelo de datos y roles 
 - Filtro de categoría mínima del referee vs. categoría del partido (con alerta, no bloqueo total).
 - Flujo de aceptación/rechazo de la designación por parte del referee, con plazo automático de 48h.
 - Carga de evaluaciones de desempeño (performance, físico, videoanálisis, coaching), con vista de partidos pendientes de evaluar.
+- Autoevaluación/reporte post-partido cargado por el propio referee (autocalificación general + reporte objetivo de incidentes/condiciones), como registro/contexto, sin afectar el score.
+- Perfil de referee con historial de partidos arbitrados, visible para el propio referee, designador, evaluador y admin.
 - Indicador informativo de designaciones acumuladas en la temporada (para apoyar decisiones de desarrollo de referees nuevos).
 - Roles: `admin_nacional`, `admin_regional`, `designador`, `evaluador`, `referee`.
 
@@ -62,6 +64,7 @@ El MVP se implementa para la liga de **Perú**, pero el modelo de datos y roles 
 - `designacion` (partido_id, referee_id, estado [sugerido/confirmado/reemplazado], **estado_aceptacion** [pendiente/aceptado/rechazado/vencido], designado_por, fecha, score_snapshot jsonb). Nunca se sobreescribe: al reasignar, la fila previa pasa a `reemplazado` y se crea una nueva. Índice único parcial garantiza una sola designación vigente por partido.
 - `configuracion_scoring` (por liga): pesos por criterio (normal y alta complejidad), umbral de complejidad alta, factor de penalización por mismo club, parámetros de decaimiento por antigüedad, **`evaluacion_bloqueante`** (bool, configurable por el admin/jefe de referees — si está activo, no se puede confirmar una nueva designación para un referee con evaluaciones pendientes de partidos ya jugados).
 - Tabla de mapeo `categoria_partido → categoria_minima_referee`, configurable por liga.
+- `autoevaluacion_partido` (partido_id fk, referee_id fk, autocalificacion_general numeric(3,1) nullable, comentario_autoevaluacion text nullable, incidentes_reportados text nullable, condiciones_cancha text nullable, condiciones_clima text nullable, comportamiento_equipos text nullable, fecha_creacion). Solo puede crearla el propio referee, y solo para un `partido_id` donde tuvo una `designacion` con `estado_aceptacion=aceptado` y fecha ya pasada. **No se usa como input del motor de scoring** — es registro/contexto para el comité y para el propio historial del referee.
 
 ## 6. Motor de recomendación
 
@@ -108,16 +111,25 @@ La data histórica se carga una única vez vía script de migración (no una pan
 | Detalle de partido + recomendaciones + confirmar/reasignar | designador, admin_regional, admin_nacional |
 | Mi disponibilidad | referee |
 | Mis designaciones (aceptar/rechazar) | referee |
-| Mis evaluaciones (solo lectura) | referee |
+| Mi autoevaluación post-partido (cargar) | referee |
+| Perfil de referee — historial de partidos arbitrados, evaluaciones y autoevaluaciones (`/referees/[refereeId]`) | referee (propio), designador, evaluador, admin_regional, admin_nacional |
 | Carga de evaluaciones + pendientes de evaluar | evaluador, admin_regional, admin_nacional |
 | Catálogos (regiones, ligas, clubes, referees, usuarios) | admin_regional/admin_nacional según nivel |
 | Configuración de scoring por liga (pesos, umbrales, `evaluacion_bloqueante`, mapeo categoría mínima) | admin_regional (su región), admin_nacional |
+
+### Perfil de referee (`/referees/[refereeId]`)
+
+Consolida en una sola vista, ordenada como línea de tiempo:
+- Datos básicos: nombre, club, categoría, región, designaciones aceptadas y jugadas en la temporada.
+- Por cada partido arbitrado: rival, fecha, complejidad, evaluación del evaluador (si existe), y su autoevaluación/reporte post-partido (si existe).
+- Para el propio referee reemplaza (consolidándolas) las vistas separadas de "Mis designaciones" y "Mis evaluaciones"; para designador/evaluador/admin es de solo lectura, pensada como contexto adicional antes de designar o evaluar.
 
 ## 11. RLS y seguridad
 
 - RLS activo en todas las tablas, scopeado por región/liga vía funciones helper `SECURITY DEFINER` (`fn_rol()`, `fn_region_id()`, etc.) para evitar recursión sobre `perfil`.
 - El cálculo de recomendaciones corre del lado del servidor con service-role (bypassa RLS por necesidad de agregación eficiente), con autorización explícita verificada en código — única excepción intencional y documentada.
 - El referee solo ve sus propias designaciones **confirmadas** (nunca ve por qué no fue elegido en otras).
+- `autoevaluacion_partido`: INSERT/UPDATE solo por el propio referee sobre sus propios partidos aceptados y jugados; SELECT para el propio referee, designador, evaluador y admin del mismo scope de región/liga (mismo patrón que `evaluacion`).
 
 ## 12. Motor de scoring y complejidad — decisión de implementación
 
@@ -134,7 +146,8 @@ Ambos viven como **funciones TypeScript puras** (no PL/pgSQL/RPC), para ser test
 6. Motor de scoring + UI de recomendaciones + configuración por liga.
 7. Flujo de designación: confirmación, aceptación/rechazo del referee, plazo de 48h.
 8. Evaluaciones: carga, vista de pendientes, `evaluacion_bloqueante` configurable.
-9. Pulido y testing (unit del motor, validación de imports, matriz de RLS, e2e smoke).
+9. Autoevaluación post-partido del referee + perfil de referee con historial consolidado.
+10. Pulido y testing (unit del motor, validación de imports, matriz de RLS, e2e smoke).
 
 ## 14. Estrategia de testing
 
