@@ -120,6 +120,55 @@ async function main() {
     .insert({ region_id: LIMA_ID, nombre: `Liga Test ${sufijo}`, codigo: `LIGA-TST-${sufijo}` })
   assert(insertLigaError === null, `admin_regional de Lima puede insertar ligas en su región${insertLigaError ? `: ${insertLigaError.message}` : ''}`)
 
+  const { data: clubLima, error: clubLimaError } = await admin
+    .from('club')
+    .insert({ region_id: LIMA_ID, nombre: `Club Lima ${sufijo}`, codigo: `CLU-LIM-${sufijo}` })
+    .select('id')
+    .single()
+  if (clubLimaError || !clubLima) throw new Error(clubLimaError?.message)
+
+  const { data: clubTest, error: clubTestError } = await admin
+    .from('club')
+    .insert({ region_id: regionTest.id, nombre: `Club Test ${sufijo}`, codigo: `CLU-TST-${sufijo}` })
+    .select('id')
+    .single()
+  if (clubTestError || !clubTest) throw new Error(clubTestError?.message)
+
+  await admin.from('referee').insert({ region_id: LIMA_ID, club_id: clubLima.id, nombre: `Ref Lima ${sufijo}`, categoria: 'A' })
+  await admin.from('referee').insert({ region_id: regionTest.id, club_id: clubTest.id, nombre: `Ref Test ${sufijo}`, categoria: 'A' })
+
+  console.log('Caso: admin_regional de Lima solo ve clubes/referees de Lima')
+  const { data: clubesAdminRegional } = await clienteAdminRegionalLima.from('club').select('id')
+  assert(
+    (clubesAdminRegional ?? []).some((c) => c.id === clubLima.id) &&
+      (clubesAdminRegional ?? []).every((c) => c.id !== clubTest.id),
+    'admin_regional de Lima ve su club y no el de la región de prueba'
+  )
+  const { data: refereesAdminRegional } = await clienteAdminRegionalLima.from('referee').select('id, region_id')
+  assert(
+    (refereesAdminRegional ?? []).every((r) => r.region_id === LIMA_ID),
+    'admin_regional de Lima solo ve referees de su región'
+  )
+
+  console.log('Caso: admin_nacional ve clubes de ambas regiones')
+  const { data: clubesAdminNacional } = await clienteAdminNacional.from('club').select('id')
+  assert(
+    (clubesAdminNacional ?? []).some((c) => c.id === clubLima.id) &&
+      (clubesAdminNacional ?? []).some((c) => c.id === clubTest.id),
+    'admin_nacional ve clubes de Lima y de la región de prueba'
+  )
+
+  console.log('Caso: admin_regional de Lima NO puede insertar un club en la región de prueba')
+  const { error: insertClubForaneoError } = await clienteAdminRegionalLima
+    .from('club')
+    .insert({ region_id: regionTest.id, nombre: 'No debería crearse', codigo: `NOPE-CLU-${sufijo}` })
+  assert(insertClubForaneoError !== null, 'admin_regional de Lima no puede insertar clubes fuera de su región')
+
+  await admin.from('referee').delete().eq('region_id', LIMA_ID).eq('nombre', `Ref Lima ${sufijo}`)
+  await admin.from('referee').delete().eq('region_id', regionTest.id).eq('nombre', `Ref Test ${sufijo}`)
+  await admin.from('club').delete().eq('id', clubLima.id)
+  await admin.from('club').delete().eq('id', clubTest.id)
+
   await admin.from('region').delete().eq('id', regionTest.id)
   await limpiarUsuarioDePrueba(emailAdminNacional)
   await limpiarUsuarioDePrueba(emailAdminRegionalLima)
