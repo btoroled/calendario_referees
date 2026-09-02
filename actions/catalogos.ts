@@ -73,6 +73,7 @@ export type Club = {
   nombre: string
   codigo: string
   region_id: string
+  activo: boolean
   region: { nombre: string } | null
 }
 
@@ -80,7 +81,7 @@ export async function listClubes(): Promise<Club[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('club')
-    .select('id, nombre, codigo, region_id, region:region(nombre)')
+    .select('id, nombre, codigo, region_id, activo, region:region(nombre)')
     .order('nombre')
   if (error) throw new Error(error.message)
   return data as unknown as Club[]

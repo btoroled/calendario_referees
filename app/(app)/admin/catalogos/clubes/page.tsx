@@ -14,6 +14,7 @@ export default async function ClubesPage() {
             <th className="py-1">Nombre</th>
             <th className="py-1">Código</th>
             <th className="py-1">Región</th>
+            <th className="py-1">Activo</th>
           </tr>
         </thead>
         <tbody>
@@ -22,6 +23,7 @@ export default async function ClubesPage() {
               <td className="py-1">{c.nombre}</td>
               <td className="py-1">{c.codigo}</td>
               <td className="py-1">{c.region?.nombre}</td>
+              <td className="py-1">{c.activo ? 'Sí' : 'No'}</td>
             </tr>
           ))}
         </tbody>
