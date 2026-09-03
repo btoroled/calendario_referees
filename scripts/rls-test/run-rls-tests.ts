@@ -236,6 +236,74 @@ async function main() {
     'admin_nacional ve perfiles de cualquier región de su país (perfil_select_scope)'
   )
 
+  const emailRefereeA = `referee-a-${sufijo}@test.local`
+  const emailRefereeB = `referee-b-${sufijo}@test.local`
+  const refereeAUsuarioId = await crearUsuarioDePrueba({ email: emailRefereeA, password, rol: 'referee', pais_id: null, region_id: LIMA_ID })
+  const refereeBUsuarioId = await crearUsuarioDePrueba({ email: emailRefereeB, password, rol: 'referee', pais_id: null, region_id: LIMA_ID })
+
+  const { data: refereeCatalogoA, error: refereeCatalogoAError } = await admin
+    .from('referee')
+    .insert({ region_id: LIMA_ID, club_id: clubLima.id, nombre: `Referee A ${sufijo}`, categoria: 'A', usuario_id: refereeAUsuarioId })
+    .select('id')
+    .single()
+  if (refereeCatalogoAError || !refereeCatalogoA) throw new Error(refereeCatalogoAError?.message)
+
+  const { data: refereeCatalogoB, error: refereeCatalogoBError } = await admin
+    .from('referee')
+    .insert({ region_id: LIMA_ID, club_id: clubLima.id, nombre: `Referee B ${sufijo}`, categoria: 'A', usuario_id: refereeBUsuarioId })
+    .select('id')
+    .single()
+  if (refereeCatalogoBError || !refereeCatalogoB) throw new Error(refereeCatalogoBError?.message)
+
+  const clienteRefereeA = await iniciarSesionComo(emailRefereeA, password)
+  const clienteRefereeB = await iniciarSesionComo(emailRefereeB, password)
+
+  console.log('Caso: referee A puede insertar su propia disponibilidad')
+  const { error: insertDisponibilidadAError } = await clienteRefereeA.from('disponibilidad').insert({
+    referee_id: refereeCatalogoA.id,
+    fecha_inicio: '2026-10-01T00:00:00Z',
+    fecha_fin: '2026-10-03T00:00:00Z',
+    disponible: true,
+  })
+  assert(
+    insertDisponibilidadAError === null,
+    `referee A puede insertar su propia disponibilidad${insertDisponibilidadAError ? `: ${insertDisponibilidadAError.message}` : ''}`
+  )
+
+  console.log('Caso: referee A NO puede insertar disponibilidad para referee B')
+  const { error: insertDisponibilidadForaneaError } = await clienteRefereeA.from('disponibilidad').insert({
+    referee_id: refereeCatalogoB.id,
+    fecha_inicio: '2026-10-01T00:00:00Z',
+    fecha_fin: '2026-10-03T00:00:00Z',
+    disponible: true,
+  })
+  assert(insertDisponibilidadForaneaError !== null, 'referee A no puede insertar disponibilidad para referee B (RLS lo bloquea)')
+
+  console.log('Caso: referee A ve su propia disponibilidad')
+  const { data: disponibilidadPropiaA } = await clienteRefereeA.from('disponibilidad').select('id').eq('referee_id', refereeCatalogoA.id)
+  assert((disponibilidadPropiaA ?? []).length === 1, 'referee A ve su propia disponibilidad')
+
+  console.log('Caso: referee B NO ve la disponibilidad de referee A')
+  const { data: disponibilidadVistaPorB } = await clienteRefereeB.from('disponibilidad').select('id').eq('referee_id', refereeCatalogoA.id)
+  assert((disponibilidadVistaPorB ?? []).length === 0, 'referee B no ve la disponibilidad de referee A')
+
+  console.log('Caso: referee B NO puede eliminar disponibilidad de referee A')
+  const { data: deleteDisponibilidadData, error: deleteDisponibilidadError } = await clienteRefereeB
+    .from('disponibilidad')
+    .delete()
+    .eq('referee_id', refereeCatalogoA.id)
+    .select()
+  assert(
+    deleteDisponibilidadError !== null || (deleteDisponibilidadData ?? []).length === 0,
+    'referee B no puede eliminar disponibilidad de referee A'
+  )
+
+  await admin.from('disponibilidad').delete().eq('referee_id', refereeCatalogoA.id)
+  await admin.from('referee').delete().eq('id', refereeCatalogoA.id)
+  await admin.from('referee').delete().eq('id', refereeCatalogoB.id)
+  await limpiarUsuarioDePrueba(emailRefereeA)
+  await limpiarUsuarioDePrueba(emailRefereeB)
+
   await admin.from('referee').delete().eq('region_id', LIMA_ID).eq('nombre', `Ref Lima ${sufijo}`)
   await admin.from('referee').delete().eq('region_id', regionTest.id).eq('nombre', `Ref Test ${sufijo}`)
   await admin.from('club').delete().eq('id', clubLima.id)
