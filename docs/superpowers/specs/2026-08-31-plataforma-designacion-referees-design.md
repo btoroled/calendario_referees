@@ -25,10 +25,11 @@ El MVP se implementa para la liga de **Perú**, pero el modelo de datos y roles 
 - Perfil de referee con historial de partidos arbitrados, visible para el propio referee, designador, evaluador y admin.
 - Indicador informativo de designaciones acumuladas en la temporada (para apoyar decisiones de desarrollo de referees nuevos).
 - Roles: `admin_nacional`, `admin_regional`, `designador`, `evaluador`, `referee`.
+- Notificaciones automáticas por email (vía Resend) en los eventos clave del flujo de designación — ver sección 8.
 
 **Fuera de alcance (anotado como futuro):**
 - Múltiples oficiales por partido (jueces de touch, cuarto árbitro) — MVP es solo referee principal.
-- Notificaciones automáticas por email/WhatsApp (el referee debe entrar a la app a ver su estado).
+- Notificaciones por WhatsApp/SMS/push, y recordatorios previos al vencimiento de las 48h (el MVP solo notifica en los eventos clave, sin recordatorios intermedios).
 - Factor de distancia/logística de viaje en el score (potencial v2).
 - Rotación/cupo forzado de formación de referees nuevos (el MVP solo muestra el dato, no lo impone).
 - App móvil nativa.
@@ -41,6 +42,7 @@ El MVP se implementa para la liga de **Perú**, pero el modelo de datos y roles 
 - **Base de datos**: Postgres vía Supabase (Auth + Row-Level Security).
 - **Hosting**: Vercel (app) + Supabase Cloud (DB/auth).
 - **Multi-tenant**: jerarquía `pais → region → liga → temporada`. El MVP solo tiene Perú activo; agregar un país nuevo es insertar filas, no tocar código.
+- **Email transaccional**: Resend, invocado desde los server actions del flujo de designación (sección 8). Falla de forma no bloqueante: si el envío de email falla, la operación de negocio (confirmar/aceptar/rechazar) igual se persiste — el email es best-effort, nunca la fuente de verdad del estado.
 
 ## 4. Roles y permisos
 
@@ -91,10 +93,13 @@ La data histórica se carga una única vez vía script de migración (no una pan
 
 ## 8. Flujo de aceptación de designación
 
-1. Designador confirma una designación → `estado=confirmado`, `estado_aceptacion=pendiente`.
+1. Designador confirma una designación → `estado=confirmado`, `estado_aceptacion=pendiente`. **Email al referee** avisando la nueva designación, con link directo a "Mis designaciones".
 2. El referee ve la designación en "Mis designaciones" y debe aceptar o rechazar.
-3. Si rechaza, o si pasan **48 horas sin respuesta** (`estado_aceptacion` pasa a `vencido`), el partido queda marcado como "requiere atención" para que el designador re-asigne.
-4. Sin notificaciones push/email en el MVP — el referee debe entrar a la app.
+   - Si **rechaza** → **email al designador** avisando el rechazo, el partido queda marcado "requiere atención".
+   - Si **acepta** → sin email adicional (el referee ya está en la app en ese momento).
+3. Si pasan **48 horas sin respuesta**, `estado_aceptacion` pasa a `vencido`, el partido queda marcado "requiere atención" y se dispara **email al designador** avisando el vencimiento. El paso de `pendiente` a `vencido` a las 48h requiere un job programado (no es un evento de usuario) — la elección de mecanismo (Supabase `pg_cron` vs. Vercel Cron sobre una ruta API) queda para el plan de implementación de esta fase, no fijada en el diseño.
+4. No hay recordatorios intermedios antes del vencimiento, ni notificaciones por WhatsApp/SMS/push — solo estos 3 eventos por email (sección 2).
+5. El envío de email es best-effort (ver sección 3): si falla, el cambio de estado igual queda persistido.
 
 ## 9. Cierre del loop de evaluación
 
@@ -144,7 +149,7 @@ Ambos viven como **funciones TypeScript puras** (no PL/pgSQL/RPC), para ser test
 4. Importación de fixture (sin complejidad calculada aún).
 5. Seed histórico + cálculo automático de complejidad.
 6. Motor de scoring + UI de recomendaciones + configuración por liga.
-7. Flujo de designación: confirmación, aceptación/rechazo del referee, plazo de 48h.
+7. Flujo de designación: confirmación, aceptación/rechazo del referee, plazo de 48h, notificaciones por email (Resend).
 8. Evaluaciones: carga, vista de pendientes, `evaluacion_bloqueante` configurable.
 9. Autoevaluación post-partido del referee + perfil de referee con historial consolidado.
 10. Pulido y testing (unit del motor, validación de imports, matriz de RLS, e2e smoke).
