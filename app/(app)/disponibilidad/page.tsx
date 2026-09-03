@@ -34,8 +34,8 @@ export default async function DisponibilidadPage() {
         <tbody>
           {ventanas.map((v) => (
             <tr key={v.id} className="border-t border-border">
-              <td className="px-4 py-2">{new Date(v.fecha_inicio).toLocaleString('es-PE')}</td>
-              <td className="px-4 py-2">{new Date(v.fecha_fin).toLocaleString('es-PE')}</td>
+              <td className="px-4 py-2">{new Date(v.fecha_inicio).toLocaleString('es-PE', { timeZone: 'UTC' })}</td>
+              <td className="px-4 py-2">{new Date(v.fecha_fin).toLocaleString('es-PE', { timeZone: 'UTC' })}</td>
               <td className="px-4 py-2">{v.disponible ? 'Sí' : 'No (excepción)'}</td>
               <td className="px-4 py-2">
                 <EliminarDisponibilidadButton id={v.id} eliminarDisponibilidad={eliminarDisponibilidad} />
