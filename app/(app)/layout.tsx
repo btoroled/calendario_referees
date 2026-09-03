@@ -17,7 +17,7 @@ const NAV_POR_ROL: Record<Rol, { href: string; label: string }[]> = {
   ],
   [ROLES.DESIGNADOR]: [],
   [ROLES.EVALUADOR]: [],
-  [ROLES.REFEREE]: [],
+  [ROLES.REFEREE]: [{ href: '/disponibilidad', label: 'Mi disponibilidad' }],
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
