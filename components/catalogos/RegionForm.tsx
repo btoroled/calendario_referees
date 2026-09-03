@@ -30,33 +30,33 @@ export function RegionForm({ crearRegion }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2">
+    <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-lg border border-border bg-surface p-4">
       <div className="flex flex-col">
-        <label className="text-xs text-slate-500">Nombre</label>
+        <label className="text-xs text-muted">Nombre</label>
         <input
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
           required
-          className="rounded border px-2 py-1"
+          className="rounded border border-border bg-background px-2 py-1 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-ring"
         />
       </div>
       <div className="flex flex-col">
-        <label className="text-xs text-slate-500">Código</label>
+        <label className="text-xs text-muted">Código</label>
         <input
           value={codigo}
           onChange={(e) => setCodigo(e.target.value)}
           required
-          className="rounded border px-2 py-1"
+          className="rounded border border-border bg-background px-2 py-1 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-ring"
         />
       </div>
       <button
         type="submit"
         disabled={isPending}
-        className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-50"
+        className="rounded bg-primary px-3 py-1 text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
       >
         {isPending ? 'Guardando...' : 'Agregar'}
       </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </form>
   )
 }
