@@ -304,6 +304,98 @@ async function main() {
   await limpiarUsuarioDePrueba(emailRefereeA)
   await limpiarUsuarioDePrueba(emailRefereeB)
 
+  const { data: clubAlumni, error: clubAlumniError } = await admin
+    .from('club')
+    .select('id')
+    .eq('region_id', LIMA_ID)
+    .eq('codigo', 'ALU')
+    .single()
+  if (clubAlumniError || !clubAlumni) throw new Error('No se encontró el club semilla ALU: ' + clubAlumniError?.message)
+
+  const { data: clubTest2, error: clubTest2Error } = await admin
+    .from('club')
+    .insert({ region_id: regionTest.id, nombre: `Club Test 2 ${sufijo}`, codigo: `CLU-TST2-${sufijo}` })
+    .select('id')
+    .single()
+  if (clubTest2Error || !clubTest2) throw new Error(clubTest2Error?.message)
+
+  const { data: ligaTest, error: ligaTestError } = await admin
+    .from('liga')
+    .insert({ region_id: regionTest.id, nombre: `Liga Test ${sufijo}`, codigo: `LIGA-TST2-${sufijo}` })
+    .select('id')
+    .single()
+  if (ligaTestError || !ligaTest) throw new Error(ligaTestError?.message)
+
+  const { data: temporadaTest, error: temporadaTestError } = await admin
+    .from('temporada')
+    .insert({ liga_id: ligaTest.id, nombre: `Temporada Test ${sufijo}`, fecha_inicio: '2026-01-01', fecha_fin: '2026-12-31' })
+    .select('id')
+    .single()
+  if (temporadaTestError || !temporadaTest) throw new Error(temporadaTestError?.message)
+
+  console.log('Caso: designador de Lima puede insertar un partido en la liga de su región')
+  const { error: insertPartidoLimaError } = await clienteDesignadorLima.from('partido').insert({
+    liga_id: '33333333-3333-3333-3333-333333333333',
+    temporada_id: '44444444-4444-4444-4444-444444444444',
+    fecha: '2026-10-10',
+    hora: '15:00',
+    categoria: 'Primera',
+    club_local_id: clubLima.id,
+    club_visita_id: clubAlumni.id,
+    categoria_minima_referee: 'Regional',
+  })
+  assert(
+    insertPartidoLimaError === null,
+    `designador de Lima puede insertar un partido en su región${insertPartidoLimaError ? `: ${insertPartidoLimaError.message}` : ''}`
+  )
+
+  console.log('Caso: designador de Lima NO puede insertar un partido en la liga de la región de prueba')
+  const { error: insertPartidoForaneoError } = await clienteDesignadorLima.from('partido').insert({
+    liga_id: ligaTest.id,
+    temporada_id: temporadaTest.id,
+    fecha: '2026-10-10',
+    hora: '15:00',
+    categoria: 'Primera',
+    club_local_id: clubTest.id,
+    club_visita_id: clubTest2.id,
+    categoria_minima_referee: 'Regional',
+  })
+  assert(insertPartidoForaneoError !== null, 'designador de Lima no puede insertar partidos en la liga de otra región (RLS lo bloquea)')
+
+  const { data: partidoTest, error: partidoTestError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: ligaTest.id,
+      temporada_id: temporadaTest.id,
+      fecha: '2026-10-11',
+      hora: '15:00',
+      categoria: 'Primera',
+      club_local_id: clubTest.id,
+      club_visita_id: clubTest2.id,
+      categoria_minima_referee: 'Regional',
+    })
+    .select('id')
+    .single()
+  if (partidoTestError || !partidoTest) throw new Error(partidoTestError?.message)
+
+  console.log('Caso: admin_regional de Lima ve los partidos de su región')
+  const { data: partidosAdminRegional } = await clienteAdminRegionalLima.from('partido').select('id').eq('liga_id', '33333333-3333-3333-3333-333333333333')
+  assert((partidosAdminRegional ?? []).length > 0, 'admin_regional de Lima ve los partidos de la liga de su región')
+
+  console.log('Caso: admin_regional de Lima NO ve el partido de la liga de la región de prueba')
+  const { data: partidosAjenosAdminRegional } = await clienteAdminRegionalLima.from('partido').select('id').eq('id', partidoTest.id)
+  assert((partidosAjenosAdminRegional ?? []).length === 0, 'admin_regional de Lima no ve partidos de la región de prueba')
+
+  console.log('Caso: admin_nacional ve partidos de ambas regiones')
+  const { data: partidosAdminNacional } = await clienteAdminNacional.from('partido').select('id').eq('id', partidoTest.id)
+  assert((partidosAdminNacional ?? []).length === 1, 'admin_nacional ve el partido de la región de prueba')
+
+  await admin.from('partido').delete().eq('liga_id', ligaTest.id)
+  await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
+  await admin.from('temporada').delete().eq('id', temporadaTest.id)
+  await admin.from('liga').delete().eq('id', ligaTest.id)
+  await admin.from('club').delete().eq('id', clubTest2.id)
+
   await admin.from('referee').delete().eq('region_id', LIMA_ID).eq('nombre', `Ref Lima ${sufijo}`)
   await admin.from('referee').delete().eq('region_id', regionTest.id).eq('nombre', `Ref Test ${sufijo}`)
   await admin.from('club').delete().eq('id', clubLima.id)
