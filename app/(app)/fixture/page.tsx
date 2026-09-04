@@ -10,7 +10,8 @@ export default async function FixturePage({
   const params = await searchParams
   const [ligas, temporadas] = await Promise.all([listLigas(), listTemporadas()])
 
-  const ligaId = params.liga_id ?? ligas[0]?.id ?? ''
+  const ligaConTemporadaId = ligas.find((l) => temporadas.some((t) => t.liga_id === l.id))?.id
+  const ligaId = params.liga_id ?? ligaConTemporadaId ?? ligas[0]?.id ?? ''
   const temporadasDeLiga = temporadas.filter((t) => t.liga_id === ligaId)
   const temporadaId = params.temporada_id ?? temporadasDeLiga[0]?.id ?? ''
 
