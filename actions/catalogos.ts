@@ -137,3 +137,20 @@ export async function crearReferee(input: {
 
   revalidatePath('/admin/catalogos/referees')
 }
+
+export type Temporada = {
+  id: string
+  nombre: string
+  liga_id: string
+  activa: boolean
+}
+
+export async function listTemporadas(): Promise<Temporada[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('temporada')
+    .select('id, nombre, liga_id, activa')
+    .order('nombre')
+  if (error) throw new Error(error.message)
+  return data
+}

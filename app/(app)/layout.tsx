@@ -10,13 +10,15 @@ const NAV_POR_ROL: Record<Rol, { href: string; label: string }[]> = {
     { href: '/admin/catalogos/ligas', label: 'Ligas' },
     { href: '/admin/catalogos/clubes', label: 'Clubes' },
     { href: '/admin/catalogos/referees', label: 'Referees' },
+    { href: '/fixture', label: 'Fixture' },
   ],
   [ROLES.ADMIN_REGIONAL]: [
     { href: '/admin/catalogos/ligas', label: 'Ligas' },
     { href: '/admin/catalogos/clubes', label: 'Clubes' },
     { href: '/admin/catalogos/referees', label: 'Referees' },
+    { href: '/fixture', label: 'Fixture' },
   ],
-  [ROLES.DESIGNADOR]: [],
+  [ROLES.DESIGNADOR]: [{ href: '/fixture', label: 'Fixture' }],
   [ROLES.EVALUADOR]: [],
   [ROLES.REFEREE]: [{ href: '/disponibilidad', label: 'Mi disponibilidad' }],
 }
