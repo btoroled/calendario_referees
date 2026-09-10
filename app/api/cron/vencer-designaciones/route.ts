@@ -4,6 +4,10 @@ import { designacionesAVencer } from '@/lib/designacion/vencimiento'
 import { obtenerTransport } from '@/lib/email/transport'
 import { emailVencimiento } from '@/lib/email/mensajes'
 
+// El cron nunca debe servirse desde una respuesta cacheada. Leer `request.headers`
+// ya fuerza render dinámico, pero lo declaramos explícito como defensa en profundidad.
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   const auth = request.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -35,18 +39,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ vencidas: 0 })
   }
 
-  await db
+  const setAVencer = new Set(idsAVencer)
+  const filasAVencer = (pendientes ?? []).filter((d) => setAVencer.has(d.id))
+
+  // UPDATE núcleo: si falla, abortar sin marcar el partido ni enviar el correo,
+  // para no afirmar un vencimiento que no persistió.
+  const { error: errVencido } = await db
     .from('designacion')
     .update({ estado_aceptacion: 'vencido', fecha_respuesta: ahora })
     .in('id', idsAVencer)
+  if (errVencido) return NextResponse.json({ error: errVencido.message }, { status: 500 })
 
-  const partidoIds = [
-    ...new Set((pendientes ?? []).filter((d) => idsAVencer.includes(d.id)).map((d) => d.partido_id)),
-  ]
-  await db.from('partido').update({ requiere_atencion: true }).in('id', partidoIds)
+  const partidoIds = [...new Set(filasAVencer.map((d) => d.partido_id))]
+  const { error: errAtencion } = await db
+    .from('partido')
+    .update({ requiere_atencion: true })
+    .in('id', partidoIds)
+  if (errAtencion) {
+    // Las filas ya están 'vencido' y los correos siguen valiendo la pena: log y seguir.
+    console.error('[cron vencer] no se pudo marcar requiere_atencion:', errAtencion)
+  }
 
   const transport = obtenerTransport()
-  for (const d of (pendientes ?? []).filter((x) => idsAVencer.includes(x.id))) {
+  for (const d of filasAVencer) {
     try {
       if (!d.designado_por) continue
       const { data: pd } = await db.from('perfil').select('email').eq('id', d.designado_por).single()
