@@ -15,6 +15,7 @@ export type RecomendacionReferee = {
   alertaCategoria: boolean
   perteneceAClub: boolean
   score: ResultadoScore
+  designacionesAceptadasEnTemporada: number
 }
 
 export type ResultadoRecomendaciones = {
@@ -87,7 +88,7 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
   const { data: partido, error: partidoError } = await db
     .from('partido')
     .select(
-      'id, fecha, hora, categoria, categoria_minima_referee, complejidad, liga_id, club_local_id, club_visita_id, club_local:club_local_id(nombre), club_visita:club_visita_id(nombre)'
+      'id, fecha, hora, categoria, categoria_minima_referee, complejidad, liga_id, temporada_id, club_local_id, club_visita_id, club_local:club_local_id(nombre), club_visita:club_visita_id(nombre)'
     )
     .eq('id', partidoId)
     .single()
@@ -182,6 +183,23 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
     return !cubren.some((v) => v.disponible === false) && cubren.some((v) => v.disponible === true)
   }
 
+  // Designaciones aceptadas por referee EN ESTA temporada — dato informativo para
+  // que el designador equilibre la carga. Se cuenta en JS porque el filtro por
+  // temporada vive en el partido embebido.
+  const { data: aceptadasTemporada } = await db
+    .from('designacion')
+    .select('referee_id, partido:partido_id(temporada_id)')
+    .eq('estado', 'confirmado')
+    .eq('estado_aceptacion', 'aceptado')
+
+  const conteoPorReferee = new Map<string, number>()
+  for (const d of aceptadasTemporada ?? []) {
+    const temporadaId = (d.partido as unknown as { temporada_id: string } | null)?.temporada_id
+    if (temporadaId === partido.temporada_id) {
+      conteoPorReferee.set(d.referee_id, (conteoPorReferee.get(d.referee_id) ?? 0) + 1)
+    }
+  }
+
   const filas: RecomendacionReferee[] = refsRegion.map((r) => {
     const perteneceAClub =
       r.club_id === partido.club_local_id || r.club_id === partido.club_visita_id
@@ -202,6 +220,7 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
       alertaCategoria: ordenRef < ordenMinima,
       perteneceAClub,
       score,
+      designacionesAceptadasEnTemporada: conteoPorReferee.get(r.id) ?? 0,
     }
   })
 

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { recomendarReferees } from '@/actions/recomendaciones'
+import { confirmarDesignacion, obtenerDesignacionVigente } from '@/actions/designaciones'
 import { TablaRecomendaciones } from '@/components/fixture/TablaRecomendaciones'
 
 export default async function DetallePartidoPage({
@@ -10,8 +11,12 @@ export default async function DetallePartidoPage({
   const { partidoId } = await params
 
   let data: Awaited<ReturnType<typeof recomendarReferees>>
+  let designacionVigente: Awaited<ReturnType<typeof obtenerDesignacionVigente>>
   try {
-    data = await recomendarReferees(partidoId)
+    ;[data, designacionVigente] = await Promise.all([
+      recomendarReferees(partidoId),
+      obtenerDesignacionVigente(partidoId),
+    ])
   } catch (err) {
     console.error(err)
     return (
@@ -42,12 +47,21 @@ export default async function DetallePartidoPage({
             alerta de categoría no se evalúa para este partido.
           </p>
         )}
+        {designacionVigente && (
+          <p className="mt-2 text-sm">
+            Designado: <strong>{designacionVigente.referee_nombre}</strong> ·{' '}
+            {designacionVigente.estado_aceptacion}
+          </p>
+        )}
       </div>
 
       <h2 className="text-base font-semibold">Referees recomendados (puesto R1)</h2>
       <TablaRecomendaciones
         recomendaciones={data.recomendaciones}
         noDisponibles={data.noDisponibles}
+        partidoId={partidoId}
+        designacionVigente={designacionVigente}
+        confirmarDesignacion={confirmarDesignacion}
       />
     </div>
   )
