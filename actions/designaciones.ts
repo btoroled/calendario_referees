@@ -7,7 +7,7 @@ import { getProfile } from '@/lib/auth/getProfile'
 import { ROLES } from '@/lib/auth/roles'
 import { recomendarReferees } from '@/actions/recomendaciones'
 import { obtenerTransport } from '@/lib/email/transport'
-import { emailNuevaDesignacion } from '@/lib/email/mensajes'
+import { emailNuevaDesignacion, emailRechazo } from '@/lib/email/mensajes'
 
 function servicio() {
   return createServiceClient(
@@ -139,4 +139,134 @@ export async function confirmarDesignacion(input: {
 
   revalidatePath(`/fixture/${input.partidoId}`)
   revalidatePath('/fixture')
+}
+
+export type MiDesignacion = {
+  id: string
+  partido_label: string
+  fecha: string
+  hora: string | null
+  categoria: string
+  estado_aceptacion: 'pendiente' | 'aceptado' | 'rechazado' | 'vencido'
+  fecha_confirmacion: string | null
+}
+
+async function exigirRefereeYSuId() {
+  const perfil = await getProfile()
+  if (!perfil || perfil.rol !== ROLES.REFEREE) {
+    throw new Error('No autorizado.')
+  }
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('referee')
+    .select('id')
+    .eq('usuario_id', perfil.id)
+    .single()
+  if (error || !data) throw new Error('No tenés un perfil de referee vinculado a tu cuenta.')
+  return { perfil, refereeId: data.id }
+}
+
+export async function listMisDesignaciones(): Promise<MiDesignacion[]> {
+  await exigirRefereeYSuId()
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('designacion')
+    .select(
+      'id, estado_aceptacion, fecha_confirmacion, partido:partido_id(fecha, hora, categoria, club_local:club_local_id(nombre), club_visita:club_visita_id(nombre))'
+    )
+    .eq('estado', 'confirmado')
+    .order('fecha_confirmacion', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((d) => {
+    const p = d.partido as unknown as {
+      fecha: string
+      hora: string | null
+      categoria: string
+      club_local: { nombre: string } | null
+      club_visita: { nombre: string } | null
+    } | null
+    return {
+      id: d.id,
+      partido_label: `${p?.club_local?.nombre ?? '?'} vs ${p?.club_visita?.nombre ?? '?'}`,
+      fecha: p?.fecha ?? '',
+      hora: p?.hora ?? null,
+      categoria: p?.categoria ?? '',
+      estado_aceptacion: d.estado_aceptacion,
+      fecha_confirmacion: d.fecha_confirmacion,
+    }
+  })
+}
+
+async function cambiarEstadoAceptacion(
+  designacionId: string,
+  nuevoEstado: 'aceptado' | 'rechazado'
+): Promise<void> {
+  const { refereeId } = await exigirRefereeYSuId()
+  const supabase = await createClient()
+
+  // Verifica pertenencia y estado actual (RLS ya restringe, pero damos mensaje legible).
+  const { data: actual, error: actualError } = await supabase
+    .from('designacion')
+    .select('id, referee_id, estado_aceptacion')
+    .eq('id', designacionId)
+    .single()
+  if (actualError || !actual) throw new Error('Designación no encontrada.')
+  if (actual.referee_id !== refereeId) throw new Error('Esa designación no es tuya.')
+  if (actual.estado_aceptacion !== 'pendiente') {
+    throw new Error('Esta designación ya fue respondida o venció.')
+  }
+
+  const { error } = await supabase
+    .from('designacion')
+    .update({ estado_aceptacion: nuevoEstado, fecha_respuesta: new Date().toISOString() })
+    .eq('id', designacionId)
+  if (error) throw new Error(error.message)
+
+  if (nuevoEstado === 'rechazado') {
+    // Marca el partido y avisa al designador (best-effort). Usa service-role para leer emails.
+    const db = servicio()
+    const { data: d } = await db
+      .from('designacion')
+      .select(
+        'partido_id, designado_por, referee:referee_id(nombre), partido:partido_id(club_local:club_local_id(nombre), club_visita:club_visita_id(nombre))'
+      )
+      .eq('id', designacionId)
+      .single()
+    if (d) {
+      await db.from('partido').update({ requiere_atencion: true }).eq('id', d.partido_id)
+      try {
+        let designadorEmail: string | null = null
+        if (d.designado_por) {
+          const { data: pd } = await db.from('perfil').select('email').eq('id', d.designado_por).single()
+          designadorEmail = pd?.email ?? null
+        }
+        const p = d.partido as unknown as {
+          club_local: { nombre: string } | null
+          club_visita: { nombre: string } | null
+        } | null
+        if (designadorEmail) {
+          await obtenerTransport().send(
+            emailRechazo({
+              designadorEmail,
+              refereeNombre: (d.referee as unknown as { nombre: string } | null)?.nombre ?? 'El referee',
+              partidoLabel: `${p?.club_local?.nombre ?? '?'} vs ${p?.club_visita?.nombre ?? '?'}`,
+            })
+          )
+        }
+      } catch (err) {
+        console.error('[rechazarDesignacion] email falló (best-effort):', err)
+      }
+    }
+  }
+
+  revalidatePath('/mis-designaciones')
+}
+
+export async function aceptarDesignacion(designacionId: string): Promise<void> {
+  await cambiarEstadoAceptacion(designacionId, 'aceptado')
+}
+
+export async function rechazarDesignacion(designacionId: string): Promise<void> {
+  await cambiarEstadoAceptacion(designacionId, 'rechazado')
 }
