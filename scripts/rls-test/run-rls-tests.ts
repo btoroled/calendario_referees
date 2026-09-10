@@ -424,13 +424,18 @@ async function main() {
   )
 
   console.log('Caso: admin_regional de Lima SÍ puede MODIFICAR la configuracion_scoring de su liga')
-  const { error: cfgUpdateAdminError } = await clienteAdminRegionalLima
+  const { data: cfgUpdateAdminData, error: cfgUpdateAdminError } = await clienteAdminRegionalLima
     .from('configuracion_scoring')
     .update({ umbral_complejidad_alta: 6 })
     .eq('liga_id', LIGA_METRO_ID)
+    .select('umbral_complejidad_alta')
   assert(
     cfgUpdateAdminError === null,
     `admin_regional de Lima modifica la config de su liga${cfgUpdateAdminError ? `: ${cfgUpdateAdminError.message}` : ''}`
+  )
+  assert(
+    (cfgUpdateAdminData ?? []).length === 1 && cfgUpdateAdminData![0].umbral_complejidad_alta === 6,
+    'el update de admin_regional realmente afectó la fila (umbral_complejidad_alta = 6)'
   )
   await admin.from('configuracion_scoring').update({ umbral_complejidad_alta: 7 }).eq('liga_id', LIGA_METRO_ID)
 
