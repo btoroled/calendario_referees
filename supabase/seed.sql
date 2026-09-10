@@ -11,6 +11,15 @@
 
 create extension if not exists pgcrypto;
 
+-- Guarda: este seed es exclusivamente para bases de desarrollo. Si la base
+-- contiene cualquier usuario que no sea `@rugby.local`, abortar antes de tocar nada.
+do $$
+begin
+  if exists (select 1 from auth.users where email not like '%@rugby.local') then
+    raise exception 'seed.sql abortado: la base contiene usuarios que no son de desarrollo (@rugby.local)';
+  end if;
+end $$;
+
 -- 1. auth.users -------------------------------------------------------------
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
