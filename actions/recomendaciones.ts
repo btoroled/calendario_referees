@@ -125,7 +125,10 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
 
   // Disponibilidad: el partido es a `fecha` `hora`; el referee está disponible si tiene
   // una ventana `disponible=true` que cubre ese instante y ninguna `disponible=false` que lo pise.
-  const instante = new Date(`${partido.fecha}T${partido.hora ?? '00:00'}:00`).toISOString()
+  // disponibilidad.fecha_inicio/fin son hora local de Lima "disfrazada" de UTC
+  // (migración 0013): se comparan por dígitos crudos, sin conversión de zona.
+  // partido.hora es un `time` de Postgres serializado "HH:MM:SS" (o null).
+  const instante = `${partido.fecha}T${(partido.hora ?? '00:00:00').slice(0, 8)}` // "YYYY-MM-DDTHH:MM:SS", 19 chars
   const { data: ventanas } = await db
     .from('disponibilidad')
     .select('referee_id, fecha_inicio, fecha_fin, disponible')
@@ -133,7 +136,9 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
 
   function estaDisponible(refereeId: string): boolean {
     const propias = (ventanas ?? []).filter((v) => v.referee_id === refereeId)
-    const cubren = propias.filter((v) => v.fecha_inicio <= instante && v.fecha_fin >= instante)
+    const cubren = propias.filter(
+      (v) => v.fecha_inicio.slice(0, 19) <= instante && v.fecha_fin.slice(0, 19) >= instante
+    )
     if (cubren.length === 0) return false
     // Si alguna ventana que cubre el instante es disponible=false, gana la excepción.
     return !cubren.some((v) => v.disponible === false) && cubren.some((v) => v.disponible === true)
