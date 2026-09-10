@@ -8,7 +8,17 @@ export default async function DetallePartidoPage({
   params: Promise<{ partidoId: string }>
 }) {
   const { partidoId } = await params
-  const data = await recomendarReferees(partidoId)
+
+  let data: Awaited<ReturnType<typeof recomendarReferees>>
+  try {
+    data = await recomendarReferees(partidoId)
+  } catch (err) {
+    return (
+      <div className="rounded-lg border border-border bg-surface p-6 text-sm text-muted">
+        {err instanceof Error ? err.message : 'No se pudieron cargar las recomendaciones.'}
+      </div>
+    )
+  }
   const p = data.partido
 
   return (
