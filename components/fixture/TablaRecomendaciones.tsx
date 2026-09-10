@@ -45,6 +45,13 @@ export function TablaRecomendaciones({
           </tr>
         </thead>
         <tbody>
+          {recomendaciones.length === 0 && (
+            <tr className="border-t border-border">
+              <td colSpan={7} className="px-4 py-3 text-muted">
+                No hay referees disponibles para este partido.
+              </td>
+            </tr>
+          )}
           {recomendaciones.map((rec, i) => (
             <Fragment key={rec.referee_id}>
               <tr className="border-t border-border">

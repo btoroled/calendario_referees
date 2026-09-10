@@ -13,9 +13,10 @@ export default async function DetallePartidoPage({
   try {
     data = await recomendarReferees(partidoId)
   } catch (err) {
+    console.error(err)
     return (
       <div className="rounded-lg border border-border bg-surface p-6 text-sm text-muted">
-        {err instanceof Error ? err.message : 'No se pudieron cargar las recomendaciones.'}
+        No se pudieron cargar las recomendaciones para este partido.
       </div>
     )
   }
@@ -35,6 +36,12 @@ export default async function DetallePartidoPage({
           {p.fecha} {p.hora ?? ''} · {p.categoria} · categoría mínima: {p.categoria_minima_referee} ·
           complejidad: {p.complejidad ?? '—'}
         </p>
+        {!p.categoria_minima_mapeada && (
+          <p className="mt-2 text-xs text-amber-600">
+            Categoría mínima &quot;{p.categoria_minima_referee}&quot; no está mapeada al escalafón — la
+            alerta de categoría no se evalúa para este partido.
+          </p>
+        )}
       </div>
 
       <h2 className="text-base font-semibold">Referees recomendados (puesto R1)</h2>
