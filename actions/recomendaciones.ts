@@ -136,8 +136,9 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
 
   function estaDisponible(refereeId: string): boolean {
     const propias = (ventanas ?? []).filter((v) => v.referee_id === refereeId)
+    const norm = (s: string | null) => (s ?? '').slice(0, 19).replace(' ', 'T')
     const cubren = propias.filter(
-      (v) => v.fecha_inicio.slice(0, 19) <= instante && v.fecha_fin.slice(0, 19) >= instante
+      (v) => norm(v.fecha_inicio) <= instante && norm(v.fecha_fin) >= instante
     )
     if (cubren.length === 0) return false
     // Si alguna ventana que cubre el instante es disponible=false, gana la excepción.
