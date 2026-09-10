@@ -24,6 +24,7 @@ export type ResultadoRecomendaciones = {
     hora: string | null
     categoria: string
     categoria_minima_referee: string
+    categoria_minima_mapeada: boolean
     complejidad: number | null
     club_local: string
     club_visita: string
@@ -92,22 +93,55 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
     .single()
   if (partidoError || !partido) throw new Error('Partido no encontrado.')
 
+  // Liga del partido: región + país. Sirve para (a) acotar la búsqueda de referees
+  // a la región y (b) verificar que el llamador administra esta región/país antes de
+  // usar el service client. Spec §11: el bypass de RLS solo se permite "con
+  // autorización explícita verificada en código" — eso es rol Y alcance.
+  const { data: ligaRow, error: ligaError } = await db
+    .from('liga')
+    .select('region_id, region:region_id(pais_id)')
+    .eq('id', partido.liga_id)
+    .single()
+  if (ligaError || !ligaRow) throw new Error('Liga del partido no encontrada.')
+  const regionId = ligaRow.region_id
+  const paisId = (ligaRow.region as unknown as { pais_id: string } | null)?.pais_id ?? null
+
+  const enAlcance =
+    perfil.rol === ROLES.ADMIN_NACIONAL
+      ? paisId !== null && paisId === perfil.pais_id
+      : ligaRow.region_id === perfil.region_id
+  if (!enAlcance) {
+    throw new Error('No autorizado para ver recomendaciones de este partido.')
+  }
+
+  // El partido es a `fecha` `hora`. partido.hora es un `time` de Postgres
+  // serializado "HH:MM:SS" (o null). disponibilidad.fecha_inicio/fin son hora
+  // local de Lima "disfrazada" de UTC (migración 0013): se comparan por dígitos
+  // crudos, sin conversión de zona.
+  const instante = `${partido.fecha}T${(partido.hora ?? '00:00:00').slice(0, 8)}` // "YYYY-MM-DDTHH:MM:SS", 19 chars
+
+  // Evaluaciones más antiguas que ~5 semividas (semividaDias por defecto 180)
+  // pesan <3% tras el decaimiento exponencial — despreciable. Acota el select
+  // para que no lo trunque el max_rows de PostgREST.
+  const fechaEvalDesde = new Date(Date.now() - 900 * 864e5).toISOString().slice(0, 10)
+
   const [{ data: cfgFila }, { data: escalafon }, { data: referees }] = await Promise.all([
     db.from('configuracion_scoring').select('*').eq('liga_id', partido.liga_id).maybeSingle(),
     db.from('categoria_referee').select('nombre, orden'),
     db
       .from('referee')
       .select('id, nombre, categoria, club_id, region_id, activo, club:club_id(nombre)')
-      .eq('activo', true),
+      .eq('activo', true)
+      .eq('region_id', regionId),
   ])
 
   const config = cfgFila ? configDesdeFila(cfgFila as Record<string, number>) : CONFIG_POR_DEFECTO
   const ordenPorCategoria = new Map((escalafon ?? []).map((c) => [c.nombre, c.orden]))
-  const ordenMinima = ordenPorCategoria.get(partido.categoria_minima_referee) ?? 0
+  const ordenMinimaRaw = ordenPorCategoria.get(partido.categoria_minima_referee)
+  const categoriaMinimaMapeada = ordenMinimaRaw !== undefined
+  const ordenMinima = ordenMinimaRaw ?? 0
 
-  // Referees de la región de la liga del partido.
-  const { data: ligaRow } = await db.from('liga').select('region_id').eq('id', partido.liga_id).single()
-  const regionId = ligaRow?.region_id
+  // El select ya viene acotado por región; este filtro queda como no-op defensivo.
   const refsRegion = (referees ?? []).filter((r) => r.region_id === regionId)
   const refIds = refsRegion.map((r) => r.id)
 
@@ -115,6 +149,7 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
     .from('evaluacion')
     .select('referee_id, tipo, valor, fecha')
     .in('referee_id', refIds.length > 0 ? refIds : ['00000000-0000-0000-0000-000000000000'])
+    .gte('fecha', fechaEvalDesde)
 
   const evalsPorReferee = new Map<string, EvaluacionInput[]>()
   for (const e of evaluaciones ?? []) {
@@ -123,16 +158,18 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
     evalsPorReferee.set(e.referee_id, arr)
   }
 
-  // Disponibilidad: el partido es a `fecha` `hora`; el referee está disponible si tiene
-  // una ventana `disponible=true` que cubre ese instante y ninguna `disponible=false` que lo pise.
-  // disponibilidad.fecha_inicio/fin son hora local de Lima "disfrazada" de UTC
-  // (migración 0013): se comparan por dígitos crudos, sin conversión de zona.
-  // partido.hora es un `time` de Postgres serializado "HH:MM:SS" (o null).
-  const instante = `${partido.fecha}T${(partido.hora ?? '00:00:00').slice(0, 8)}` // "YYYY-MM-DDTHH:MM:SS", 19 chars
+  // Disponibilidad: el referee está disponible si tiene una ventana `disponible=true`
+  // que cubre `instante` y ninguna `disponible=false` que lo pise. El filtro SQL es
+  // seguro bajo la convención de 0013: PostgREST parsea el literal
+  // "YYYY-MM-DDTHH:MM:SS" en la TZ de sesión (UTC) — la misma semántica de dígitos
+  // crudos que implementa `norm()` — así que el filtro SQL y la comparación JS
+  // coinciden. El paso JS solo resuelve el override `disponible=false`.
   const { data: ventanas } = await db
     .from('disponibilidad')
     .select('referee_id, fecha_inicio, fecha_fin, disponible')
     .in('referee_id', refIds.length > 0 ? refIds : ['00000000-0000-0000-0000-000000000000'])
+    .lte('fecha_inicio', instante)
+    .gte('fecha_fin', instante)
 
   function estaDisponible(refereeId: string): boolean {
     const propias = (ventanas ?? []).filter((v) => v.referee_id === refereeId)
@@ -180,6 +217,7 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
       hora: partido.hora,
       categoria: partido.categoria,
       categoria_minima_referee: partido.categoria_minima_referee,
+      categoria_minima_mapeada: categoriaMinimaMapeada,
       complejidad: partido.complejidad,
       club_local: (partido.club_local as unknown as { nombre: string } | null)?.nombre ?? '',
       club_visita: (partido.club_visita as unknown as { nombre: string } | null)?.nombre ?? '',
