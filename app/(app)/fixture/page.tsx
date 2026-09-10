@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { listLigas, listTemporadas } from '@/actions/catalogos'
 import { listPartidos, importarFixture } from '@/actions/fixture'
 import { FixtureImportForm } from '@/components/fixture/FixtureImportForm'
@@ -77,7 +78,11 @@ export default async function FixturePage({
         <tbody>
           {partidos.map((p) => (
             <tr key={p.id} className="border-t border-border">
-              <td className="px-4 py-2">{p.fecha}</td>
+              <td className="px-4 py-2">
+                <Link href={`/fixture/${p.id}`} className="text-primary hover:underline">
+                  {p.fecha}
+                </Link>
+              </td>
               <td className="px-4 py-2">{p.hora}</td>
               <td className="px-4 py-2">{p.categoria}</td>
               <td className="px-4 py-2">{p.club_local?.nombre}</td>
