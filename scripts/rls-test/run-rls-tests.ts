@@ -8,6 +8,7 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 const PERU_ID = '11111111-1111-1111-1111-111111111111'
 const LIMA_ID = '22222222-2222-2222-2222-222222222222'
+const LIGA_METRO_ID = '33333333-3333-3333-3333-333333333333'
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -81,10 +82,12 @@ async function main() {
   const emailAdminNacional = `admin-nacional-${sufijo}@test.local`
   const emailAdminRegionalLima = `admin-regional-lima-${sufijo}@test.local`
   const emailDesignadorLima = `designador-lima-${sufijo}@test.local`
+  const emailEvaluadorLima = `evaluador-lima-${sufijo}@test.local`
 
   await crearUsuarioDePrueba({ email: emailAdminNacional, password, rol: 'admin_nacional', pais_id: PERU_ID, region_id: null })
   await crearUsuarioDePrueba({ email: emailAdminRegionalLima, password, rol: 'admin_regional', pais_id: null, region_id: LIMA_ID })
   await crearUsuarioDePrueba({ email: emailDesignadorLima, password, rol: 'designador', pais_id: null, region_id: LIMA_ID })
+  await crearUsuarioDePrueba({ email: emailEvaluadorLima, password, rol: 'evaluador', pais_id: null, region_id: LIMA_ID })
 
   console.log('Caso: admin_nacional ve todas las regiones de Perú (Lima + región de prueba)')
   const clienteAdminNacional = await iniciarSesionComo(emailAdminNacional, password)
@@ -386,9 +389,99 @@ async function main() {
   const { data: partidosAjenosAdminRegional } = await clienteAdminRegionalLima.from('partido').select('id').eq('id', partidoTest.id)
   assert((partidosAjenosAdminRegional ?? []).length === 0, 'admin_regional de Lima no ve partidos de la región de prueba')
 
+  console.log('Caso: designador de Lima NO ve el partido de la liga de la región de prueba (frontera en la que se apoya el gate de alcance de recomendarReferees)')
+  const { data: partidoTestVistoPorDesignador } = await clienteDesignadorLima
+    .from('partido')
+    .select('*')
+    .eq('id', partidoTest.id)
+  assert(
+    (partidoTestVistoPorDesignador ?? []).length === 0,
+    'designador de Lima no ve el partido de otra región — el gate de alcance de recomendarReferees no puede ser burlado con un partidoId ajeno'
+  )
+
   console.log('Caso: admin_nacional ve partidos de ambas regiones')
   const { data: partidosAdminNacional } = await clienteAdminNacional.from('partido').select('id').eq('id', partidoTest.id)
   assert((partidosAdminNacional ?? []).length === 1, 'admin_nacional ve el partido de la región de prueba')
+
+  // ---- configuracion_scoring ----
+
+  console.log('Caso: designador de Lima puede LEER la configuracion_scoring de su liga')
+  const { data: cfgLeidaDesignador } = await clienteDesignadorLima
+    .from('configuracion_scoring')
+    .select('liga_id')
+    .eq('liga_id', LIGA_METRO_ID)
+  assert(
+    (cfgLeidaDesignador ?? []).some((c) => c.liga_id === LIGA_METRO_ID),
+    'designador de Lima lee la config de scoring de su liga'
+  )
+
+  console.log('Caso: designador de Lima NO puede MODIFICAR la configuracion_scoring')
+  const { error: cfgUpdateDesignadorError } = await clienteDesignadorLima
+    .from('configuracion_scoring')
+    .update({ umbral_complejidad_alta: 3 })
+    .eq('liga_id', LIGA_METRO_ID)
+  assert(
+    cfgUpdateDesignadorError !== null ||
+      (await (async () => {
+        const { data } = await admin
+          .from('configuracion_scoring')
+          .select('umbral_complejidad_alta')
+          .eq('liga_id', LIGA_METRO_ID)
+          .single()
+        return data?.umbral_complejidad_alta === 7
+      })()),
+    'designador de Lima no puede modificar la config de scoring (RLS lo bloquea o el update no afecta filas)'
+  )
+
+  console.log('Caso: admin_regional de Lima SÍ puede MODIFICAR la configuracion_scoring de su liga')
+  const { data: cfgUpdateAdminData, error: cfgUpdateAdminError } = await clienteAdminRegionalLima
+    .from('configuracion_scoring')
+    .update({ umbral_complejidad_alta: 6 })
+    .eq('liga_id', LIGA_METRO_ID)
+    .select('umbral_complejidad_alta')
+  assert(
+    cfgUpdateAdminError === null,
+    `admin_regional de Lima modifica la config de su liga${cfgUpdateAdminError ? `: ${cfgUpdateAdminError.message}` : ''}`
+  )
+  assert(
+    (cfgUpdateAdminData ?? []).length === 1 && cfgUpdateAdminData![0].umbral_complejidad_alta === 6,
+    'el update de admin_regional realmente afectó la fila (umbral_complejidad_alta = 6)'
+  )
+  await admin.from('configuracion_scoring').update({ umbral_complejidad_alta: 7 }).eq('liga_id', LIGA_METRO_ID)
+
+  // ---- evaluacion ----
+  const { data: refereeLima } = await admin
+    .from('referee')
+    .select('id')
+    .eq('region_id', LIMA_ID)
+    .limit(1)
+    .single()
+
+  console.log('Caso: evaluador de Lima puede INSERTAR una evaluación de un referee de su región')
+  const clienteEvaluadorLima = await iniciarSesionComo(emailEvaluadorLima, password)
+  const { data: evalInsertada, error: evalInsertError } = await clienteEvaluadorLima
+    .from('evaluacion')
+    .insert({ referee_id: refereeLima!.id, tipo: 'performance', valor: 8, fecha: '2026-09-01' })
+    .select('id')
+  assert(
+    evalInsertError === null,
+    `evaluador de Lima inserta evaluación de un referee de su región${evalInsertError ? `: ${evalInsertError.message}` : ''}`
+  )
+  const evalIdsInsertadas = (evalInsertada ?? []).map((e) => e.id as string)
+
+  console.log('Caso: designador de Lima NO puede INSERTAR una evaluación')
+  const { error: evalInsertDesignadorError } = await clienteDesignadorLima
+    .from('evaluacion')
+    .insert({ referee_id: refereeLima!.id, tipo: 'fisico', valor: 5, fecha: '2026-09-01' })
+  assert(
+    evalInsertDesignadorError !== null,
+    'designador de Lima no puede insertar evaluaciones (RLS lo bloquea)'
+  )
+
+  // Limpieza acotada: solo las filas que este script insertó, no todas las del referee.
+  if (evalIdsInsertadas.length > 0) {
+    await admin.from('evaluacion').delete().in('id', evalIdsInsertadas)
+  }
 
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
@@ -405,6 +498,7 @@ async function main() {
   await limpiarUsuarioDePrueba(emailAdminNacional)
   await limpiarUsuarioDePrueba(emailAdminRegionalLima)
   await limpiarUsuarioDePrueba(emailDesignadorLima)
+  await limpiarUsuarioDePrueba(emailEvaluadorLima)
   await limpiarUsuarioDePrueba(emailEvaluadorTest)
 
   console.log(`\n${fallos === 0 ? 'TODOS LOS CASOS PASARON' : `${fallos} CASO(S) FALLARON`}`)
