@@ -389,6 +389,16 @@ async function main() {
   const { data: partidosAjenosAdminRegional } = await clienteAdminRegionalLima.from('partido').select('id').eq('id', partidoTest.id)
   assert((partidosAjenosAdminRegional ?? []).length === 0, 'admin_regional de Lima no ve partidos de la región de prueba')
 
+  console.log('Caso: designador de Lima NO ve el partido de la liga de la región de prueba (frontera en la que se apoya el gate de alcance de recomendarReferees)')
+  const { data: partidoTestVistoPorDesignador } = await clienteDesignadorLima
+    .from('partido')
+    .select('*')
+    .eq('id', partidoTest.id)
+  assert(
+    (partidoTestVistoPorDesignador ?? []).length === 0,
+    'designador de Lima no ve el partido de otra región — el gate de alcance de recomendarReferees no puede ser burlado con un partidoId ajeno'
+  )
+
   console.log('Caso: admin_nacional ve partidos de ambas regiones')
   const { data: partidosAdminNacional } = await clienteAdminNacional.from('partido').select('id').eq('id', partidoTest.id)
   assert((partidosAdminNacional ?? []).length === 1, 'admin_nacional ve el partido de la región de prueba')
@@ -449,13 +459,15 @@ async function main() {
 
   console.log('Caso: evaluador de Lima puede INSERTAR una evaluación de un referee de su región')
   const clienteEvaluadorLima = await iniciarSesionComo(emailEvaluadorLima, password)
-  const { error: evalInsertError } = await clienteEvaluadorLima
+  const { data: evalInsertada, error: evalInsertError } = await clienteEvaluadorLima
     .from('evaluacion')
     .insert({ referee_id: refereeLima!.id, tipo: 'performance', valor: 8, fecha: '2026-09-01' })
+    .select('id')
   assert(
     evalInsertError === null,
     `evaluador de Lima inserta evaluación de un referee de su región${evalInsertError ? `: ${evalInsertError.message}` : ''}`
   )
+  const evalIdsInsertadas = (evalInsertada ?? []).map((e) => e.id as string)
 
   console.log('Caso: designador de Lima NO puede INSERTAR una evaluación')
   const { error: evalInsertDesignadorError } = await clienteDesignadorLima
@@ -466,7 +478,10 @@ async function main() {
     'designador de Lima no puede insertar evaluaciones (RLS lo bloquea)'
   )
 
-  await admin.from('evaluacion').delete().eq('referee_id', refereeLima!.id)
+  // Limpieza acotada: solo las filas que este script insertó, no todas las del referee.
+  if (evalIdsInsertadas.length > 0) {
+    await admin.from('evaluacion').delete().in('id', evalIdsInsertadas)
+  }
 
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
