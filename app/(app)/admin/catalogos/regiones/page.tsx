@@ -8,18 +8,18 @@ export default async function RegionesPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-lg font-semibold">Regiones</h1>
       <RegionForm crearRegion={crearRegion} />
-      <table className="w-full text-sm">
+      <table className="w-full rounded-lg border border-border bg-surface text-sm">
         <thead>
-          <tr className="text-left text-slate-500">
-            <th className="py-1">Nombre</th>
-            <th className="py-1">Código</th>
+          <tr className="text-left text-muted">
+            <th className="px-4 py-2">Nombre</th>
+            <th className="px-4 py-2">Código</th>
           </tr>
         </thead>
         <tbody>
           {regiones.map((r) => (
-            <tr key={r.id} className="border-t">
-              <td className="py-1">{r.nombre}</td>
-              <td className="py-1">{r.codigo}</td>
+            <tr key={r.id} className="border-t border-border">
+              <td className="px-4 py-2">{r.nombre}</td>
+              <td className="px-4 py-2">{r.codigo}</td>
             </tr>
           ))}
         </tbody>

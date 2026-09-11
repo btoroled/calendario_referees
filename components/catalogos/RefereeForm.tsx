@@ -36,18 +36,18 @@ export function RefereeForm({ crearReferee, regiones, clubes }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2">
+    <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-lg border border-border bg-surface p-4">
       <div className="flex flex-col">
-        <label className="text-xs text-slate-500">Nombre</label>
-        <input value={nombre} onChange={(e) => setNombre(e.target.value)} required className="rounded border px-2 py-1" />
+        <label className="text-xs text-muted">Nombre</label>
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} required className="rounded border border-border bg-background px-2 py-1 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-ring" />
       </div>
       <div className="flex flex-col">
-        <label className="text-xs text-slate-500">Categoría</label>
-        <input value={categoria} onChange={(e) => setCategoria(e.target.value)} required className="rounded border px-2 py-1" />
+        <label className="text-xs text-muted">Categoría</label>
+        <input value={categoria} onChange={(e) => setCategoria(e.target.value)} required className="rounded border border-border bg-background px-2 py-1 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-ring" />
       </div>
       <div className="flex flex-col">
-        <label className="text-xs text-slate-500">Región</label>
-        <select value={regionId} onChange={(e) => setRegionId(e.target.value)} className="rounded border px-2 py-1">
+        <label className="text-xs text-muted">Región</label>
+        <select value={regionId} onChange={(e) => setRegionId(e.target.value)} className="rounded border border-border bg-background px-2 py-1 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-ring">
           {regiones.map((r) => (
             <option key={r.id} value={r.id}>
               {r.nombre}
@@ -56,8 +56,8 @@ export function RefereeForm({ crearReferee, regiones, clubes }: Props) {
         </select>
       </div>
       <div className="flex flex-col">
-        <label className="text-xs text-slate-500">Club (opcional)</label>
-        <select value={clubId} onChange={(e) => setClubId(e.target.value)} className="rounded border px-2 py-1">
+        <label className="text-xs text-muted">Club (opcional)</label>
+        <select value={clubId} onChange={(e) => setClubId(e.target.value)} className="rounded border border-border bg-background px-2 py-1 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-ring">
           <option value="">Sin club</option>
           {clubes.map((c) => (
             <option key={c.id} value={c.id}>
@@ -66,10 +66,10 @@ export function RefereeForm({ crearReferee, regiones, clubes }: Props) {
           ))}
         </select>
       </div>
-      <button type="submit" disabled={isPending} className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-50">
+      <button type="submit" disabled={isPending} className="rounded bg-primary px-3 py-1 text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50">
         {isPending ? 'Guardando...' : 'Agregar'}
       </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </form>
   )
 }

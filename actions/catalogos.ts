@@ -73,6 +73,7 @@ export type Club = {
   nombre: string
   codigo: string
   region_id: string
+  activo: boolean
   region: { nombre: string } | null
 }
 
@@ -80,7 +81,7 @@ export async function listClubes(): Promise<Club[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('club')
-    .select('id, nombre, codigo, region_id, region:region(nombre)')
+    .select('id, nombre, codigo, region_id, activo, region:region(nombre)')
     .order('nombre')
   if (error) throw new Error(error.message)
   return data as unknown as Club[]
@@ -135,4 +136,21 @@ export async function crearReferee(input: {
   if (error) throw new Error(error.message)
 
   revalidatePath('/admin/catalogos/referees')
+}
+
+export type Temporada = {
+  id: string
+  nombre: string
+  liga_id: string
+  activa: boolean
+}
+
+export async function listTemporadas(): Promise<Temporada[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('temporada')
+    .select('id, nombre, liga_id, activa')
+    .order('nombre')
+  if (error) throw new Error(error.message)
+  return data
 }

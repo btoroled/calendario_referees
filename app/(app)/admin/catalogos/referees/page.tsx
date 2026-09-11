@@ -8,22 +8,22 @@ export default async function RefereesPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-lg font-semibold">Referees</h1>
       <RefereeForm crearReferee={crearReferee} regiones={regiones} clubes={clubes} />
-      <table className="w-full text-sm">
+      <table className="w-full rounded-lg border border-border bg-surface text-sm">
         <thead>
-          <tr className="text-left text-slate-500">
-            <th className="py-1">Nombre</th>
-            <th className="py-1">Categoría</th>
-            <th className="py-1">Club</th>
-            <th className="py-1">Activo</th>
+          <tr className="text-left text-muted">
+            <th className="px-4 py-2">Nombre</th>
+            <th className="px-4 py-2">Categoría</th>
+            <th className="px-4 py-2">Club</th>
+            <th className="px-4 py-2">Activo</th>
           </tr>
         </thead>
         <tbody>
           {referees.map((r) => (
-            <tr key={r.id} className="border-t">
-              <td className="py-1">{r.nombre}</td>
-              <td className="py-1">{r.categoria}</td>
-              <td className="py-1">{r.club?.nombre ?? '—'}</td>
-              <td className="py-1">{r.activo ? 'Sí' : 'No'}</td>
+            <tr key={r.id} className="border-t border-border">
+              <td className="px-4 py-2">{r.nombre}</td>
+              <td className="px-4 py-2">{r.categoria}</td>
+              <td className="px-4 py-2">{r.club?.nombre ?? '—'}</td>
+              <td className="px-4 py-2">{r.activo ? 'Sí' : 'No'}</td>
             </tr>
           ))}
         </tbody>
