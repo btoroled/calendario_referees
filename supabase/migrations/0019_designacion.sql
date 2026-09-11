@@ -49,20 +49,36 @@ using (
   )
 );
 
--- INSERT: designador/admin sobre partidos de su scope.
+-- INSERT: designador/admin sobre partidos de su scope Y referees de su scope.
+-- Ambos alcances se exigen: el partido debe ser de su región/país y el referee también
+-- (mismo patrón que evaluacion_insert en 0018). Así la DB respalda el chequeo que
+-- `confirmarDesignacion` hace en código antes de usar el service-role client.
 create policy designacion_insert_scope on designacion for insert
 with check (
-  fn_rol() = 'admin_nacional' and partido_id in (
-    select id from partido where liga_id in (
-      select id from liga where region_id in (select id from region where pais_id = fn_pais_id())
+  (
+    fn_rol() = 'admin_nacional' and partido_id in (
+      select id from partido where liga_id in (
+        select id from liga where region_id in (select id from region where pais_id = fn_pais_id())
+      )
+    )
+    or fn_rol() in ('admin_regional', 'designador') and partido_id in (
+      select id from partido where liga_id in (select id from liga where region_id = fn_region_id())
     )
   )
-  or fn_rol() in ('admin_regional', 'designador') and partido_id in (
-    select id from partido where liga_id in (select id from liga where region_id = fn_region_id())
+  and (
+    fn_rol() = 'admin_nacional' and referee_id in (
+      select id from referee where region_id in (select id from region where pais_id = fn_pais_id())
+    )
+    or fn_rol() in ('admin_regional', 'designador') and referee_id in (
+      select id from referee where region_id = fn_region_id()
+    )
   )
 );
 
 -- UPDATE: designador/admin (reasignar: pasar la previa a 'reemplazado') sobre su scope.
+-- El WITH CHECK es explícito: sin él Postgres reusa el USING y la fila NUEVA solo
+-- quedaría atada al partido original, permitiendo repuntar partido_id/referee_id
+-- fuera del alcance del designador.
 create policy designacion_update_scope on designacion for update
 using (
   fn_rol() = 'admin_nacional' and partido_id in (
@@ -73,11 +89,65 @@ using (
   or fn_rol() in ('admin_regional', 'designador') and partido_id in (
     select id from partido where liga_id in (select id from liga where region_id = fn_region_id())
   )
+)
+with check (
+  (
+    fn_rol() = 'admin_nacional' and partido_id in (
+      select id from partido where liga_id in (
+        select id from liga where region_id in (select id from region where pais_id = fn_pais_id())
+      )
+    )
+    or fn_rol() in ('admin_regional', 'designador') and partido_id in (
+      select id from partido where liga_id in (select id from liga where region_id = fn_region_id())
+    )
+  )
+  and (
+    fn_rol() = 'admin_nacional' and referee_id in (
+      select id from referee where region_id in (select id from region where pais_id = fn_pais_id())
+    )
+    or fn_rol() in ('admin_regional', 'designador') and referee_id in (
+      select id from referee where region_id = fn_region_id()
+    )
+  )
 );
 
--- UPDATE: el referee puede cambiar SOLO el estado_aceptacion de sus propias designaciones confirmadas.
+-- UPDATE: el referee puede cambiar SOLO el estado_aceptacion de sus propias designaciones
+-- confirmadas y AÚN PENDIENTES. Una designación ya respondida o vencida deja de ser suya
+-- para tocar. El WITH CHECK es explícito (sin él, Postgres reusa el USING y la fila nueva
+-- quedaría sin restricción sobre partido_id, fecha_confirmacion, designado_por, etc.).
 create policy designacion_update_referee on designacion for update
 using (
   estado = 'confirmado'
+  and estado_aceptacion = 'pendiente'
+  and referee_id in (select id from referee where usuario_id = auth.uid())
+)
+with check (
+  estado = 'confirmado'
   and referee_id in (select id from referee where usuario_id = auth.uid())
 );
+
+-- Backstop del WITH CHECK: para un referee, TODA columna salvo estado_aceptacion y
+-- fecha_respuesta queda clavada. Evita que el referee se auto-designe repuntando
+-- partido_id, evada el vencimiento reseteando fecha_confirmacion, o silencie al
+-- designador nulificando designado_por.
+create or replace function fn_designacion_referee_solo_aceptacion()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if fn_rol() = 'referee' then
+    if new.partido_id        is distinct from old.partido_id
+       or new.referee_id     is distinct from old.referee_id
+       or new.puesto         is distinct from old.puesto
+       or new.estado         is distinct from old.estado
+       or new.designado_por  is distinct from old.designado_por
+       or new.fecha          is distinct from old.fecha
+       or new.fecha_confirmacion is distinct from old.fecha_confirmacion
+       or new.score_snapshot is distinct from old.score_snapshot
+       or new.created_at     is distinct from old.created_at then
+      raise exception 'El referee solo puede cambiar estado_aceptacion.';
+    end if;
+  end if;
+  return new;
+end $$;
+
+create trigger designacion_referee_guard before update on designacion
+for each row execute function fn_designacion_referee_solo_aceptacion();

@@ -539,6 +539,26 @@ async function main() {
     `designador de Lima inserta designacion${desigInsertError ? `: ${desigInsertError.message}` : ''}`
   )
 
+  console.log('Caso: designador de Lima NO puede designar a un referee de otra región')
+  const { data: refereeForaneo } = await admin
+    .from('referee')
+    .select('id')
+    .eq('region_id', regionTest.id)
+    .limit(1)
+    .single()
+  const { error: desigRefereeForaneoError } = await clienteDesignadorLima.from('designacion').insert({
+    partido_id: partidoLima.id,
+    referee_id: refereeForaneo!.id,
+    puesto: 'R2',
+    estado: 'confirmado',
+    estado_aceptacion: 'pendiente',
+    fecha_confirmacion: new Date().toISOString(),
+  })
+  assert(
+    desigRefereeForaneoError !== null,
+    'designador de Lima no puede designar a un referee de otra región, aunque el partido sea suyo (designacion_insert_scope)'
+  )
+
   console.log('Caso: el referee ve su designacion confirmada')
   const clienteRefereeLima = await iniciarSesionComo(emailRefereeLima, password)
   const { data: misDesig } = await clienteRefereeLima.from('designacion').select('id, partido_id')
@@ -546,22 +566,83 @@ async function main() {
     (misDesig ?? []).some((d) => d.partido_id === partidoLima.id),
     'el referee ve su designacion confirmada'
   )
+  const miDesignacionId = (misDesig ?? [])[0]?.id as string
+
+  console.log('Caso: el referee NO puede repuntar partido_id de su designacion (auto-designación)')
+  const { data: repuntarData, error: repuntarError } = await clienteRefereeLima
+    .from('designacion')
+    .update({ partido_id: partidoTest.id })
+    .eq('id', miDesignacionId)
+    .select('id, partido_id')
+  assert(
+    repuntarError !== null || (repuntarData ?? []).length === 0,
+    `el referee no puede cambiar el partido_id de su designacion (trigger designacion_referee_guard)${repuntarError ? `: ${repuntarError.message}` : ''}`
+  )
+  const { data: trasRepuntar } = await admin
+    .from('designacion')
+    .select('partido_id')
+    .eq('id', miDesignacionId)
+    .single()
+  assert(
+    trasRepuntar?.partido_id === partidoLima.id,
+    'la designacion sigue apuntando al partido original tras el intento de repunte'
+  )
+
+  console.log('Caso: el referee NO puede resetear fecha_confirmacion (evadir el vencimiento a 48 h)')
+  const { data: resetData, error: resetError } = await clienteRefereeLima
+    .from('designacion')
+    .update({ fecha_confirmacion: new Date().toISOString() })
+    .eq('id', miDesignacionId)
+    .select('id')
+  assert(
+    resetError !== null || (resetData ?? []).length === 0,
+    `el referee no puede resetear fecha_confirmacion (trigger designacion_referee_guard)${resetError ? `: ${resetError.message}` : ''}`
+  )
 
   console.log('Caso: el referee puede cambiar su estado_aceptacion a aceptado')
   const { data: aceptada, error: aceptarError } = await clienteRefereeLima
     .from('designacion')
     .update({ estado_aceptacion: 'aceptado' })
-    .eq('id', (misDesig ?? [])[0]?.id)
+    .eq('id', miDesignacionId)
     .select('id, estado_aceptacion')
   assert(
     aceptarError === null && (aceptada ?? []).length === 1 && aceptada![0].estado_aceptacion === 'aceptado',
     `el referee acepta su designacion${aceptarError ? `: ${aceptarError.message}` : ''}`
   )
 
+  console.log('Caso: el referee NO puede revivir una designacion vencida')
+  await admin
+    .from('designacion')
+    .update({ estado_aceptacion: 'vencido' })
+    .eq('id', miDesignacionId)
+  const { data: revivirData, error: revivirError } = await clienteRefereeLima
+    .from('designacion')
+    .update({ estado_aceptacion: 'aceptado' })
+    .eq('id', miDesignacionId)
+    .select('id, estado_aceptacion')
+  assert(
+    revivirError !== null || (revivirData ?? []).length === 0,
+    'el referee no puede pasar una designacion vencida a aceptada (designacion_update_referee.USING exige pendiente)'
+  )
+  const { data: trasRevivir } = await admin
+    .from('designacion')
+    .select('estado_aceptacion')
+    .eq('id', miDesignacionId)
+    .single()
+  assert(
+    trasRevivir?.estado_aceptacion === 'vencido',
+    'la designacion sigue vencida tras el intento de revivirla'
+  )
+
   // Caso "un referee NO ve designaciones que no son suyas": se omite — a esta altura
   // los clientes referee del bloque de disponibilidad ya fueron limpiados.
+  // Caso "designador de OTRA región no ve/toca esta designacion": se omite — no hay un
+  // cliente designador fuera de Lima vivo en el script; la frontera equivalente ya queda
+  // cubierta por el caso de insert con referee foráneo de arriba.
 
-  // Limpieza de este bloque
+  // Limpieza de este bloque. Se borra por referee_id además de por partido_id por si
+  // algún caso negativo llegara a mover la fila fuera del partido semilla.
+  await admin.from('designacion').delete().eq('referee_id', refereeVinculado.id)
   await admin.from('designacion').delete().eq('partido_id', partidoLima.id)
   await admin.from('referee').delete().eq('id', refereeVinculado.id)
   await admin.from('partido').delete().eq('id', partidoLima.id)
