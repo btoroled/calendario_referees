@@ -2,6 +2,21 @@
 
 import { Fragment, useState } from 'react'
 import type { RecomendacionReferee } from '@/actions/recomendaciones'
+import type { DesignacionVigente } from '@/actions/designaciones'
+import { BotonConfirmarDesignacion } from '@/components/designacion/BotonConfirmarDesignacion'
+
+// El referee designado ya respondió que no (o dejó vencer): la celda tiene que leerse
+// como "hay que reasignar", no como "sigue asignado".
+function etiquetaDesignacion(estado: DesignacionVigente['estado_aceptacion']): string {
+  switch (estado) {
+    case 'rechazado':
+      return 'Rechazó — reasigná a otro'
+    case 'vencido':
+      return 'Venció — reasigná a otro'
+    default:
+      return `Designado (${estado})`
+  }
+}
 
 function BadgeDesglose({ rec }: { rec: RecomendacionReferee }) {
   const d = rec.score.desglose
@@ -24,9 +39,19 @@ function BadgeDesglose({ rec }: { rec: RecomendacionReferee }) {
 export function TablaRecomendaciones({
   recomendaciones,
   noDisponibles,
+  partidoId,
+  designacionVigente,
+  confirmarDesignacion,
 }: {
   recomendaciones: RecomendacionReferee[]
   noDisponibles: RecomendacionReferee[]
+  partidoId: string
+  designacionVigente: {
+    referee_id: string
+    referee_nombre: string
+    estado_aceptacion: DesignacionVigente['estado_aceptacion']
+  } | null
+  confirmarDesignacion: (input: { partidoId: string; refereeId: string }) => Promise<void>
 }) {
   const [expandido, setExpandido] = useState<string | null>(null)
 
@@ -41,13 +66,15 @@ export function TablaRecomendaciones({
             <th className="px-4 py-2">Categoría</th>
             <th className="px-4 py-2">Score</th>
             <th className="px-4 py-2">Alertas</th>
+            <th className="px-4 py-2">Designación</th>
+            <th className="px-4 py-2">Desig. temporada</th>
             <th className="px-4 py-2"></th>
           </tr>
         </thead>
         <tbody>
           {recomendaciones.length === 0 && (
             <tr className="border-t border-border">
-              <td colSpan={7} className="px-4 py-3 text-muted">
+              <td colSpan={9} className="px-4 py-3 text-muted">
                 No hay referees disponibles para este partido.
               </td>
             </tr>
@@ -69,6 +96,23 @@ export function TablaRecomendaciones({
                   )}
                 </td>
                 <td className="px-4 py-2">
+                  {designacionVigente?.referee_id === rec.referee_id ? (
+                    <span className="text-xs text-muted">
+                      {etiquetaDesignacion(designacionVigente.estado_aceptacion)}
+                    </span>
+                  ) : (
+                    <BotonConfirmarDesignacion
+                      partidoId={partidoId}
+                      refereeId={rec.referee_id}
+                      esReasignacion={designacionVigente !== null}
+                      confirmarDesignacion={confirmarDesignacion}
+                    />
+                  )}
+                </td>
+                <td className="px-4 py-2 text-xs text-muted">
+                  {rec.designacionesAceptadasEnTemporada}
+                </td>
+                <td className="px-4 py-2">
                   <button
                     type="button"
                     onClick={() => setExpandido(expandido === rec.referee_id ? null : rec.referee_id)}
@@ -80,7 +124,7 @@ export function TablaRecomendaciones({
               </tr>
               {expandido === rec.referee_id && (
                 <tr className="border-t border-border">
-                  <td colSpan={7} className="px-4 py-2">
+                  <td colSpan={9} className="px-4 py-2">
                     <BadgeDesglose rec={rec} />
                   </td>
                 </tr>
