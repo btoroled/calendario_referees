@@ -483,6 +483,78 @@ async function main() {
     await admin.from('evaluacion').delete().in('id', evalIdsInsertadas)
   }
 
+  // ---- designacion ----
+  // Prepara: un partido de la Liga Metropolitana y un referee de Lima con cuenta.
+  const { data: partidoLima, error: partidoLimaError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: LIGA_METRO_ID,
+      temporada_id: '44444444-4444-4444-4444-444444444444',
+      fecha: '2026-11-01',
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: (await admin.from('club').select('id').eq('codigo', 'ALU').single()).data!.id,
+      club_visita_id: (await admin.from('club').select('id').eq('codigo', 'LRC').single()).data!.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoLimaError || !partidoLima) throw new Error(partidoLimaError?.message)
+
+  const emailRefereeLima = `referee-lima-${sufijo}@test.local`
+  const refereeLimaUserId = await crearUsuarioDePrueba({
+    email: emailRefereeLima,
+    password,
+    rol: 'referee',
+    pais_id: null,
+    region_id: LIMA_ID,
+  })
+  const { data: refereeVinculado, error: refereeVinculadoError } = await admin
+    .from('referee')
+    .insert({ nombre: emailRefereeLima, categoria: 'Regional', region_id: LIMA_ID, usuario_id: refereeLimaUserId })
+    .select('id')
+    .single()
+  if (refereeVinculadoError || !refereeVinculado) throw new Error(refereeVinculadoError?.message)
+
+  console.log('Caso: designador de Lima puede INSERTAR una designacion en un partido de su liga')
+  const { error: desigInsertError } = await clienteDesignadorLima.from('designacion').insert({
+    partido_id: partidoLima.id,
+    referee_id: refereeVinculado.id,
+    puesto: 'R1',
+    estado: 'confirmado',
+    estado_aceptacion: 'pendiente',
+    fecha_confirmacion: new Date().toISOString(),
+  })
+  assert(
+    desigInsertError === null,
+    `designador de Lima inserta designacion${desigInsertError ? `: ${desigInsertError.message}` : ''}`
+  )
+
+  console.log('Caso: el referee ve su designacion confirmada')
+  const clienteRefereeLima = await iniciarSesionComo(emailRefereeLima, password)
+  const { data: misDesig } = await clienteRefereeLima.from('designacion').select('id, partido_id')
+  assert(
+    (misDesig ?? []).some((d) => d.partido_id === partidoLima.id),
+    'el referee ve su designacion confirmada'
+  )
+
+  console.log('Caso: el referee puede cambiar su estado_aceptacion a aceptado')
+  const { error: aceptarError } = await clienteRefereeLima
+    .from('designacion')
+    .update({ estado_aceptacion: 'aceptado' })
+    .eq('id', (misDesig ?? [])[0]?.id)
+  assert(aceptarError === null, `el referee acepta su designacion${aceptarError ? `: ${aceptarError.message}` : ''}`)
+
+  // Caso "un referee NO ve designaciones que no son suyas": se omite — a esta altura
+  // los clientes referee del bloque de disponibilidad ya fueron limpiados.
+
+  // Limpieza de este bloque
+  await admin.from('designacion').delete().eq('partido_id', partidoLima.id)
+  await admin.from('referee').delete().eq('id', refereeVinculado.id)
+  await admin.from('partido').delete().eq('id', partidoLima.id)
+  await limpiarUsuarioDePrueba(emailRefereeLima)
+
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
   await admin.from('temporada').delete().eq('id', temporadaTest.id)
