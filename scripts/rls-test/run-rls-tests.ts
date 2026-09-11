@@ -485,6 +485,14 @@ async function main() {
 
   // ---- designacion ----
   // Prepara: un partido de la Liga Metropolitana y un referee de Lima con cuenta.
+  const { data: clubLRC, error: clubLRCError } = await admin
+    .from('club')
+    .select('id')
+    .eq('region_id', LIMA_ID)
+    .eq('codigo', 'LRC')
+    .single()
+  if (clubLRCError || !clubLRC) throw new Error('No se encontró el club semilla LRC: ' + clubLRCError?.message)
+
   const { data: partidoLima, error: partidoLimaError } = await admin
     .from('partido')
     .insert({
@@ -493,8 +501,8 @@ async function main() {
       fecha: '2026-11-01',
       hora: '15:00',
       categoria: 'Regional',
-      club_local_id: (await admin.from('club').select('id').eq('codigo', 'ALU').single()).data!.id,
-      club_visita_id: (await admin.from('club').select('id').eq('codigo', 'LRC').single()).data!.id,
+      club_local_id: clubAlumni.id,
+      club_visita_id: clubLRC.id,
       categoria_minima_referee: 'Regional',
       es_historico: false,
     })
@@ -540,11 +548,15 @@ async function main() {
   )
 
   console.log('Caso: el referee puede cambiar su estado_aceptacion a aceptado')
-  const { error: aceptarError } = await clienteRefereeLima
+  const { data: aceptada, error: aceptarError } = await clienteRefereeLima
     .from('designacion')
     .update({ estado_aceptacion: 'aceptado' })
     .eq('id', (misDesig ?? [])[0]?.id)
-  assert(aceptarError === null, `el referee acepta su designacion${aceptarError ? `: ${aceptarError.message}` : ''}`)
+    .select('id, estado_aceptacion')
+  assert(
+    aceptarError === null && (aceptada ?? []).length === 1 && aceptada![0].estado_aceptacion === 'aceptado',
+    `el referee acepta su designacion${aceptarError ? `: ${aceptarError.message}` : ''}`
+  )
 
   // Caso "un referee NO ve designaciones que no son suyas": se omite — a esta altura
   // los clientes referee del bloque de disponibilidad ya fueron limpiados.
