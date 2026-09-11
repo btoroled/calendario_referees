@@ -73,6 +73,7 @@ export default async function FixturePage({
             <th className="px-4 py-2">Visita</th>
             <th className="px-4 py-2">Cancha</th>
             <th className="px-4 py-2">Jornada</th>
+            <th className="px-4 py-2">Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -89,6 +90,13 @@ export default async function FixturePage({
               <td className="px-4 py-2">{p.club_visita?.nombre}</td>
               <td className="px-4 py-2">{p.cancha}</td>
               <td className="px-4 py-2">{p.jornada}</td>
+              <td className="px-4 py-2">
+                {p.requiere_atencion && (
+                  <span className="rounded bg-amber-500/20 px-1 text-xs text-amber-600">
+                    ⚠ requiere atención
+                  </span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

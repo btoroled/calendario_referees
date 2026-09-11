@@ -14,6 +14,7 @@ export type Partido = {
   cancha: string | null
   categoria: string
   jornada: number | null
+  requiere_atencion: boolean
   club_local: { nombre: string } | null
   club_visita: { nombre: string } | null
 }
@@ -22,7 +23,7 @@ export async function listPartidos(input: { liga_id: string; temporada_id: strin
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('partido')
-    .select('id, fecha, hora, cancha, categoria, jornada, club_local:club_local_id(nombre), club_visita:club_visita_id(nombre)')
+    .select('id, fecha, hora, cancha, categoria, jornada, requiere_atencion, club_local:club_local_id(nombre), club_visita:club_visita_id(nombre)')
     .eq('liga_id', input.liga_id)
     .eq('temporada_id', input.temporada_id)
     .eq('es_historico', false)

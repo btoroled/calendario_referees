@@ -146,11 +146,41 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
   const refsRegion = (referees ?? []).filter((r) => r.region_id === regionId)
   const refIds = refsRegion.map((r) => r.id)
 
-  const { data: evaluaciones } = await db
-    .from('evaluacion')
-    .select('referee_id, tipo, valor, fecha')
-    .in('referee_id', refIds.length > 0 ? refIds : ['00000000-0000-0000-0000-000000000000'])
-    .gte('fecha', fechaEvalDesde)
+  const refIdsAcotados = refIds.length > 0 ? refIds : ['00000000-0000-0000-0000-000000000000']
+
+  // Los tres selects dependientes de `refIds` van en paralelo y TODOS acotados por
+  // `refIdsAcotados`, para que el max_rows de PostgREST no los trunque en silencio.
+  const [{ data: evaluaciones }, { data: ventanas }, { data: aceptadasTemporada }] =
+    await Promise.all([
+      db
+        .from('evaluacion')
+        .select('referee_id, tipo, valor, fecha')
+        .in('referee_id', refIdsAcotados)
+        .gte('fecha', fechaEvalDesde),
+      // Disponibilidad: el referee está disponible si tiene una ventana `disponible=true`
+      // que cubre `instante` y ninguna `disponible=false` que lo pise. El filtro SQL es
+      // seguro bajo la convención de 0013: PostgREST parsea el literal
+      // "YYYY-MM-DDTHH:MM:SS" en la TZ de sesión (UTC) — la misma semántica de dígitos
+      // crudos que implementa `norm()` — así que el filtro SQL y la comparación JS
+      // coinciden. El paso JS (`estaDisponible`) solo resuelve el override `disponible=false`.
+      db
+        .from('disponibilidad')
+        .select('referee_id, fecha_inicio, fecha_fin, disponible')
+        .in('referee_id', refIdsAcotados)
+        .lte('fecha_inicio', instante)
+        .gte('fecha_fin', instante),
+      // Designaciones aceptadas por referee EN ESTA temporada — dato informativo para
+      // que el designador equilibre la carga. El `!inner` sobre el partido embebido hace
+      // que `partido.temporada_id` filtre de verdad (sin él el embed es un left join y
+      // las filas de otras temporadas vuelven con `partido: null` en vez de excluirse).
+      db
+        .from('designacion')
+        .select('referee_id, partido:partido_id!inner(temporada_id)')
+        .eq('estado', 'confirmado')
+        .eq('estado_aceptacion', 'aceptado')
+        .in('referee_id', refIdsAcotados)
+        .eq('partido.temporada_id', partido.temporada_id),
+    ])
 
   const evalsPorReferee = new Map<string, EvaluacionInput[]>()
   for (const e of evaluaciones ?? []) {
@@ -158,19 +188,6 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
     arr.push({ tipo: e.tipo as TipoEvaluacion, valor: Number(e.valor), fecha: e.fecha })
     evalsPorReferee.set(e.referee_id, arr)
   }
-
-  // Disponibilidad: el referee está disponible si tiene una ventana `disponible=true`
-  // que cubre `instante` y ninguna `disponible=false` que lo pise. El filtro SQL es
-  // seguro bajo la convención de 0013: PostgREST parsea el literal
-  // "YYYY-MM-DDTHH:MM:SS" en la TZ de sesión (UTC) — la misma semántica de dígitos
-  // crudos que implementa `norm()` — así que el filtro SQL y la comparación JS
-  // coinciden. El paso JS solo resuelve el override `disponible=false`.
-  const { data: ventanas } = await db
-    .from('disponibilidad')
-    .select('referee_id, fecha_inicio, fecha_fin, disponible')
-    .in('referee_id', refIds.length > 0 ? refIds : ['00000000-0000-0000-0000-000000000000'])
-    .lte('fecha_inicio', instante)
-    .gte('fecha_fin', instante)
 
   function estaDisponible(refereeId: string): boolean {
     const propias = (ventanas ?? []).filter((v) => v.referee_id === refereeId)
@@ -183,21 +200,9 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
     return !cubren.some((v) => v.disponible === false) && cubren.some((v) => v.disponible === true)
   }
 
-  // Designaciones aceptadas por referee EN ESTA temporada — dato informativo para
-  // que el designador equilibre la carga. Se cuenta en JS porque el filtro por
-  // temporada vive en el partido embebido.
-  const { data: aceptadasTemporada } = await db
-    .from('designacion')
-    .select('referee_id, partido:partido_id(temporada_id)')
-    .eq('estado', 'confirmado')
-    .eq('estado_aceptacion', 'aceptado')
-
   const conteoPorReferee = new Map<string, number>()
   for (const d of aceptadasTemporada ?? []) {
-    const temporadaId = (d.partido as unknown as { temporada_id: string } | null)?.temporada_id
-    if (temporadaId === partido.temporada_id) {
-      conteoPorReferee.set(d.referee_id, (conteoPorReferee.get(d.referee_id) ?? 0) + 1)
-    }
+    conteoPorReferee.set(d.referee_id, (conteoPorReferee.get(d.referee_id) ?? 0) + 1)
   }
 
   const filas: RecomendacionReferee[] = refsRegion.map((r) => {

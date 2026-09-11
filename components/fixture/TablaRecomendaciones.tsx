@@ -2,7 +2,21 @@
 
 import { Fragment, useState } from 'react'
 import type { RecomendacionReferee } from '@/actions/recomendaciones'
+import type { DesignacionVigente } from '@/actions/designaciones'
 import { BotonConfirmarDesignacion } from '@/components/designacion/BotonConfirmarDesignacion'
+
+// El referee designado ya respondió que no (o dejó vencer): la celda tiene que leerse
+// como "hay que reasignar", no como "sigue asignado".
+function etiquetaDesignacion(estado: DesignacionVigente['estado_aceptacion']): string {
+  switch (estado) {
+    case 'rechazado':
+      return 'Rechazó — reasigná a otro'
+    case 'vencido':
+      return 'Venció — reasigná a otro'
+    default:
+      return `Designado (${estado})`
+  }
+}
 
 function BadgeDesglose({ rec }: { rec: RecomendacionReferee }) {
   const d = rec.score.desglose
@@ -35,7 +49,7 @@ export function TablaRecomendaciones({
   designacionVigente: {
     referee_id: string
     referee_nombre: string
-    estado_aceptacion: string
+    estado_aceptacion: DesignacionVigente['estado_aceptacion']
   } | null
   confirmarDesignacion: (input: { partidoId: string; refereeId: string }) => Promise<void>
 }) {
@@ -84,7 +98,7 @@ export function TablaRecomendaciones({
                 <td className="px-4 py-2">
                   {designacionVigente?.referee_id === rec.referee_id ? (
                     <span className="text-xs text-muted">
-                      Designado ({designacionVigente.estado_aceptacion})
+                      {etiquetaDesignacion(designacionVigente.estado_aceptacion)}
                     </span>
                   ) : (
                     <BotonConfirmarDesignacion
