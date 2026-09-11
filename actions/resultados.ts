@@ -86,11 +86,19 @@ export async function guardarResultado(
   const hoy = new Date().toISOString().slice(0, 10)
   if (partido.fecha > hoy) throw new Error('No se puede cargar el resultado de un partido que todavía no se jugó.')
 
-  const { error } = await supabase
+  // El `.select('id')` no es cosmético: un UPDATE que RLS deja sin filas vuelve con
+  // `error === null`, así que sin contar las filas devueltas un usuario fuera de alcance
+  // (p. ej. admin_nacional sin pais_id, que igual puede LEER el partido) vería
+  // "Resultado guardado." sin que se haya persistido nada.
+  const { data: actualizados, error } = await supabase
     .from('partido')
     .update(validacion.valor)
     .eq('id', input.partidoId)
+    .select('id')
   if (error) throw new Error(error.message)
+  if ((actualizados ?? []).length === 0) {
+    throw new Error('No se pudo guardar el resultado (el partido no está en tu alcance).')
+  }
 
   revalidatePath(`/fixture/${input.partidoId}/resultado`)
   revalidatePath(`/fixture/${input.partidoId}`)

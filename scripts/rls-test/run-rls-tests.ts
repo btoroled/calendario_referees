@@ -677,12 +677,18 @@ async function main() {
   if (partidoParaResultadoError || !partidoParaResultado) throw new Error(partidoParaResultadoError?.message)
 
   console.log('Caso: designador de Lima puede ACTUALIZAR el resultado de un partido de su liga')
-  const { error: updResultadoOkError } = await clienteDesignadorLima
+  // El `.select()` es parte de la aserción: un UPDATE bloqueado por RLS no devuelve
+  // error, solo cero filas, así que sin contar las filas devueltas el caso pasaría
+  // igual aunque la policy no otorgara el permiso.
+  const { data: updResultadoOkData, error: updResultadoOkError } = await clienteDesignadorLima
     .from('partido')
     .update({ resultado_local: 25, resultado_visita: 18 })
     .eq('id', partidoParaResultado.id)
+    .select('id, resultado_local')
   assert(
-    updResultadoOkError === null,
+    updResultadoOkError === null &&
+      (updResultadoOkData ?? []).length === 1 &&
+      updResultadoOkData![0].resultado_local === 25,
     `designador de Lima actualiza el resultado de un partido de su liga${updResultadoOkError ? `: ${updResultadoOkError.message}` : ''}`
   )
 
@@ -701,6 +707,43 @@ async function main() {
     'designador de otra región no puede actualizar el resultado (RLS lo bloquea o el update no afecta filas, y el valor previo queda intacto)'
   )
 
+  console.log('Caso: designador de Lima NO puede actualizar el resultado de un partido histórico de su liga')
+  const { data: partidoHistorico, error: partidoHistoricoError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: LIGA_METRO_ID,
+      temporada_id: '44444444-4444-4444-4444-444444444444',
+      fecha: '2026-09-02',
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubAlumni.id,
+      club_visita_id: clubLRC.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: true,
+      resultado_local: 10,
+      resultado_visita: 7,
+    })
+    .select('id')
+    .single()
+  if (partidoHistoricoError || !partidoHistorico) throw new Error(partidoHistoricoError?.message)
+
+  const { data: updHistoricoData, error: updHistoricoError } = await clienteDesignadorLima
+    .from('partido')
+    .update({ resultado_local: 99 })
+    .eq('id', partidoHistorico.id)
+    .select('id')
+  const { data: verifHistorico } = await admin
+    .from('partido')
+    .select('resultado_local')
+    .eq('id', partidoHistorico.id)
+    .single()
+  assert(
+    (updHistoricoError !== null || (updHistoricoData ?? []).length === 0) &&
+      verifHistorico?.resultado_local === 10,
+    'designador de Lima no puede tocar un partido histórico (RLS lo bloquea o el update no afecta filas, y el valor previo queda intacto)'
+  )
+
+  await admin.from('partido').delete().eq('id', partidoHistorico.id)
   await admin.from('partido').delete().eq('id', partidoParaResultado.id)
   await limpiarUsuarioDePrueba(emailDesignadorRegionTest)
 

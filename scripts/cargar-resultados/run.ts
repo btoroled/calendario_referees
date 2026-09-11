@@ -22,6 +22,11 @@ async function main() {
     process.exit(1)
   }
 
+  if (filas.length === 0) {
+    console.error('El archivo no tiene filas de resultados.')
+    process.exit(1)
+  }
+
   const db = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
@@ -30,10 +35,22 @@ async function main() {
   if (clubesError) throw new Error(clubesError.message)
   const codigoPorId = new Map((clubes ?? []).map((c) => [c.id, c.codigo]))
 
+  // El fetch se acota al rango de fechas del CSV y a partidos no históricos: PostgREST
+  // corta en `max_rows` (1000) y una liga acumula temporadas históricas de Fase 5, así
+  // que sin esto las filas válidas del CSV empezarían a reportar "sin coincidencia".
+  // `matchResultados` ya descarta históricos internamente, así que el filtro no cambia
+  // el comportamiento.
+  const fechas = filas.map((f) => f.fecha).sort()
+  const fechaDesde = fechas[0]
+  const fechaHasta = fechas[fechas.length - 1]
+
   const { data: partidos, error: partidosError } = await db
     .from('partido')
     .select('id, fecha, club_local_id, club_visita_id, es_historico')
     .eq('liga_id', ligaId)
+    .eq('es_historico', false)
+    .gte('fecha', fechaDesde)
+    .lte('fecha', fechaHasta)
   if (partidosError) throw new Error(partidosError.message)
 
   const partidosExistentes: PartidoExistente[] = (partidos ?? []).map((p) => ({
@@ -52,6 +69,8 @@ async function main() {
     process.exit(1)
   }
 
+  // Sin transacción a propósito: cada update es idempotente (fija los mismos campos a
+  // los mismos valores), así que re-correr el script tras un fallo parcial converge.
   let actualizados = 0
   for (const r of resultados) {
     if (!('match' in r)) continue
