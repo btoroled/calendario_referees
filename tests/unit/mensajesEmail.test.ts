@@ -16,6 +16,18 @@ describe('plantillas de email', () => {
     expect(m.body).toContain('https://app.test/mis-designaciones')
   })
 
+  it('emailNuevaDesignacion omite el link cuando la URL no es absoluta (NEXT_PUBLIC_APP_URL sin definir)', () => {
+    const m = emailNuevaDesignacion({
+      refereeEmail: 'ref@x.com',
+      partidoLabel: 'Alumni vs Lima RC',
+      fechaPartido: '2026-10-20 15:00',
+      urlMisDesignaciones: '/mis-designaciones',
+    })
+    expect(m.body).toContain('Alumni vs Lima RC')
+    expect(m.body).toContain('Mis designaciones')
+    expect(m.body).not.toContain('/mis-designaciones')
+  })
+
   it('emailRechazo va al designador y nombra al referee y el partido', () => {
     const m = emailRechazo({ designadorEmail: 'des@x.com', refereeNombre: 'Juan Perez', partidoLabel: 'A vs B' })
     expect(m.to).toBe('des@x.com')

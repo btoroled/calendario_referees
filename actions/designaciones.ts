@@ -217,11 +217,20 @@ async function cambiarEstadoAceptacion(
     throw new Error('Esta designación ya fue respondida o venció.')
   }
 
-  const { error } = await supabase
+  // El `.eq('estado_aceptacion','pendiente')` va en el UPDATE mismo, no solo en la
+  // lectura previa: entre el chequeo y el write puede colarse otra respuesta (o un
+  // llamador directo a la API disparando aceptar+rechazar a la vez), y sin esto los
+  // efectos del rechazo correrían sobre una fila ya 'aceptado'.
+  const { data: actualizadas, error } = await supabase
     .from('designacion')
     .update({ estado_aceptacion: nuevoEstado, fecha_respuesta: new Date().toISOString() })
     .eq('id', designacionId)
+    .eq('estado_aceptacion', 'pendiente')
+    .select('id')
   if (error) throw new Error(error.message)
+  if ((actualizadas ?? []).length === 0) {
+    throw new Error('Esta designación ya fue respondida o venció.')
+  }
 
   if (nuevoEstado === 'rechazado') {
     // Marca el partido y avisa al designador (best-effort). Usa service-role para leer emails.
@@ -257,6 +266,10 @@ async function cambiarEstadoAceptacion(
       } catch (err) {
         console.error('[rechazarDesignacion] email falló (best-effort):', err)
       }
+      // El rechazo cambia lo que ve el designador (designación vigente + requiere_atencion),
+      // no solo la vista del referee.
+      revalidatePath('/fixture')
+      revalidatePath(`/fixture/${d.partido_id}`)
     }
   }
 

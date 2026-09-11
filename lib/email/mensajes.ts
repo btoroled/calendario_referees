@@ -4,15 +4,20 @@ export function emailNuevaDesignacion(p: {
   refereeEmail: string
   partidoLabel: string
   fechaPartido: string
+  /** URL absoluta. Si viene vacía (NEXT_PUBLIC_APP_URL sin definir) se omite el link:
+   *  un `/mis-designaciones` relativo en un correo no lleva a ningún lado. */
   urlMisDesignaciones: string
 }): MensajeEmail {
+  const url = p.urlMisDesignaciones.trim()
+  const tieneUrlAbsoluta = /^https?:\/\//i.test(url)
   return {
     to: p.refereeEmail,
     subject: `Nueva designación: ${p.partidoLabel}`,
     body:
       `Tenés una nueva designación para el partido ${p.partidoLabel} (${p.fechaPartido}).\n\n` +
-      `Ingresá a "Mis designaciones" para aceptarla o rechazarla dentro de las próximas 48 horas:\n` +
-      `${p.urlMisDesignaciones}\n`,
+      (tieneUrlAbsoluta
+        ? `Ingresá a "Mis designaciones" para aceptarla o rechazarla dentro de las próximas 48 horas:\n${url}\n`
+        : `Ingresá a "Mis designaciones" para aceptarla o rechazarla dentro de las próximas 48 horas.\n`),
   }
 }
 

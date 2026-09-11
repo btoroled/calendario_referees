@@ -43,14 +43,24 @@ export async function GET(request: NextRequest) {
   const filasAVencer = (pendientes ?? []).filter((d) => setAVencer.has(d.id))
 
   // UPDATE núcleo: si falla, abortar sin marcar el partido ni enviar el correo,
-  // para no afirmar un vencimiento que no persistió.
-  const { error: errVencido } = await db
+  // para no afirmar un vencimiento que no persistió. El `.eq('estado_aceptacion','pendiente')`
+  // lo hace exactamente-una-vez: si dos corridas se solapan (o Vercel reintenta), solo la
+  // que realmente movió la fila la recibe de vuelta, y el correo sale una sola vez.
+  const { data: vencidasFilas, error: errVencido } = await db
     .from('designacion')
     .update({ estado_aceptacion: 'vencido', fecha_respuesta: ahora })
     .in('id', idsAVencer)
+    .eq('estado_aceptacion', 'pendiente')
+    .select('id')
   if (errVencido) return NextResponse.json({ error: errVencido.message }, { status: 500 })
 
-  const partidoIds = [...new Set(filasAVencer.map((d) => d.partido_id))]
+  const idsVencidos = new Set((vencidasFilas ?? []).map((d) => d.id))
+  const filasVencidas = filasAVencer.filter((d) => idsVencidos.has(d.id))
+  if (filasVencidas.length === 0) {
+    return NextResponse.json({ vencidas: 0 })
+  }
+
+  const partidoIds = [...new Set(filasVencidas.map((d) => d.partido_id))]
   const { error: errAtencion } = await db
     .from('partido')
     .update({ requiere_atencion: true })
@@ -60,27 +70,38 @@ export async function GET(request: NextRequest) {
     console.error('[cron vencer] no se pudo marcar requiere_atencion:', errAtencion)
   }
 
-  const transport = obtenerTransport()
-  for (const d of filasAVencer) {
-    try {
-      if (!d.designado_por) continue
-      const { data: pd } = await db.from('perfil').select('email').eq('id', d.designado_por).single()
-      if (!pd?.email) continue
-      const p = d.partido as unknown as {
-        club_local: { nombre: string } | null
-        club_visita: { nombre: string } | null
-      } | null
-      await transport.send(
-        emailVencimiento({
-          designadorEmail: pd.email,
-          refereeNombre: (d.referee as unknown as { nombre: string } | null)?.nombre ?? 'El referee',
-          partidoLabel: `${p?.club_local?.nombre ?? '?'} vs ${p?.club_visita?.nombre ?? '?'}`,
-        })
-      )
-    } catch (err) {
-      console.error('[cron vencer] email falló (best-effort):', err)
+  // `obtenerTransport()` puede lanzar (EMAIL_TRANSPORT=resend sin API key). Para ese
+  // punto las filas YA están 'vencido': dejar escapar el throw convertiría una corrida
+  // exitosa en un 500. El correo es best-effort, así que se loguea y se omite el loop.
+  let transport: ReturnType<typeof obtenerTransport> | null = null
+  try {
+    transport = obtenerTransport()
+  } catch (err) {
+    console.error('[cron vencer] no hay transporte de email disponible (best-effort):', err)
+  }
+
+  if (transport) {
+    for (const d of filasVencidas) {
+      try {
+        if (!d.designado_por) continue
+        const { data: pd } = await db.from('perfil').select('email').eq('id', d.designado_por).single()
+        if (!pd?.email) continue
+        const p = d.partido as unknown as {
+          club_local: { nombre: string } | null
+          club_visita: { nombre: string } | null
+        } | null
+        await transport.send(
+          emailVencimiento({
+            designadorEmail: pd.email,
+            refereeNombre: (d.referee as unknown as { nombre: string } | null)?.nombre ?? 'El referee',
+            partidoLabel: `${p?.club_local?.nombre ?? '?'} vs ${p?.club_visita?.nombre ?? '?'}`,
+          })
+        )
+      } catch (err) {
+        console.error('[cron vencer] email falló (best-effort):', err)
+      }
     }
   }
 
-  return NextResponse.json({ vencidas: idsAVencer.length })
+  return NextResponse.json({ vencidas: filasVencidas.length })
 }
