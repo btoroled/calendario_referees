@@ -60,7 +60,15 @@ export default async function FixturePage({
       </form>
 
       {ligaId && temporadaId && (
-        <FixtureImportForm ligaId={ligaId} temporadaId={temporadaId} importarFixture={importarFixture} />
+        <div className="flex flex-col gap-2">
+          <FixtureImportForm ligaId={ligaId} temporadaId={temporadaId} importarFixture={importarFixture} />
+          <Link
+            href={`/fixture/nuevo?liga_id=${ligaId}&temporada_id=${temporadaId}`}
+            className="w-fit text-sm text-primary hover:underline"
+          >
+            + Agregar partido manual
+          </Link>
+        </div>
       )}
 
       <table className="w-full rounded-lg border border-border bg-surface text-sm">

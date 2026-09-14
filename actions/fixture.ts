@@ -33,6 +33,12 @@ export async function listPartidos(input: { liga_id: string; temporada_id: strin
   return data as unknown as Partido[]
 }
 
+function exigirRolFixture(rol: string | undefined): void {
+  if (rol !== ROLES.ADMIN_NACIONAL && rol !== ROLES.ADMIN_REGIONAL && rol !== ROLES.DESIGNADOR) {
+    throw new Error('No autorizado para gestionar el fixture.')
+  }
+}
+
 const LIMITE_PARTIDOS_TENDENCIA = 10
 
 async function obtenerTendenciaClub(
@@ -89,12 +95,7 @@ export async function importarFixture(input: {
   csvText: string
 }): Promise<{ importados: number }> {
   const perfil = await getProfile()
-  if (
-    !perfil ||
-    (perfil.rol !== ROLES.ADMIN_NACIONAL && perfil.rol !== ROLES.ADMIN_REGIONAL && perfil.rol !== ROLES.DESIGNADOR)
-  ) {
-    throw new Error('No autorizado para importar fixture.')
-  }
+  exigirRolFixture(perfil?.rol)
 
   const { filas, errores: erroresParseo } = parseFixtureCsv(input.csvText)
   if (erroresParseo.length > 0) {
@@ -152,4 +153,58 @@ export async function importarFixture(input: {
 
   revalidatePath('/fixture')
   return { importados: filasParaInsertar.length }
+}
+
+export async function crearPartidoManual(input: {
+  liga_id: string
+  temporada_id: string
+  fecha: string
+  hora: string
+  cancha: string
+  categoria: string
+  club_local_id: string
+  club_visita_id: string
+  jornada: number | null
+}): Promise<{ id: string }> {
+  const perfil = await getProfile()
+  exigirRolFixture(perfil?.rol)
+
+  if (input.club_local_id === input.club_visita_id) {
+    throw new Error('El club local y el club visita no pueden ser el mismo.')
+  }
+
+  const supabase = await createClient()
+
+  const { data: mapaFila } = await supabase
+    .from('categoria_minima_mapa')
+    .select('categoria_minima_referee')
+    .eq('liga_id', input.liga_id)
+    .eq('categoria', input.categoria)
+    .maybeSingle()
+  const categoriaMinimaReferee = mapaFila?.categoria_minima_referee ?? input.categoria
+
+  const complejidad = await obtenerComplejidad(supabase, input.club_local_id, input.club_visita_id)
+
+  const { data, error } = await supabase
+    .from('partido')
+    .insert({
+      liga_id: input.liga_id,
+      temporada_id: input.temporada_id,
+      fecha: input.fecha,
+      hora: input.hora,
+      cancha: input.cancha || null,
+      categoria: input.categoria,
+      club_local_id: input.club_local_id,
+      club_visita_id: input.club_visita_id,
+      jornada: input.jornada,
+      categoria_minima_referee: categoriaMinimaReferee,
+      es_historico: false,
+      complejidad,
+    })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/fixture')
+  return { id: data.id }
 }
