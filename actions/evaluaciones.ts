@@ -105,6 +105,19 @@ export async function crearEvaluacion(input: {
   }
 
   const supabase = await createClient()
+
+  const { data: designacionValida } = await supabase
+    .from('designacion')
+    .select('id')
+    .eq('referee_id', input.referee_id)
+    .eq('partido_id', input.partido_id)
+    .eq('estado', 'confirmado')
+    .eq('estado_aceptacion', 'aceptado')
+    .maybeSingle()
+  if (!designacionValida) {
+    throw new Error('No existe una designación confirmada y aceptada para ese referee en ese partido.')
+  }
+
   const { error } = await supabase.from('evaluacion').insert({
     referee_id: input.referee_id,
     partido_id: input.partido_id,
