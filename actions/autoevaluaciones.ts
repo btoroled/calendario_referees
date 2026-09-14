@@ -11,6 +11,7 @@ export type PartidoAutoevaluableUI = {
   partido_label: string
   fecha: string
   yaAutoevaluado: boolean
+  inicial: AutoevaluacionValores | null
 }
 
 export type AutoevaluacionValores = {
@@ -20,6 +21,28 @@ export type AutoevaluacionValores = {
   condiciones_cancha: string
   condiciones_clima: string
   comportamiento_equipos: string
+}
+
+type AutoevaluacionContenidoRow = {
+  partido_id: string
+  autocalificacion_general: number | string | null
+  comentario_autoevaluacion: string | null
+  incidentes_reportados: string | null
+  condiciones_cancha: string | null
+  condiciones_clima: string | null
+  comportamiento_equipos: string | null
+}
+
+function filaAValores(row: AutoevaluacionContenidoRow): AutoevaluacionValores {
+  return {
+    autocalificacion_general:
+      row.autocalificacion_general === null ? '' : String(row.autocalificacion_general),
+    comentario_autoevaluacion: row.comentario_autoevaluacion ?? '',
+    incidentes_reportados: row.incidentes_reportados ?? '',
+    condiciones_cancha: row.condiciones_cancha ?? '',
+    condiciones_clima: row.condiciones_clima ?? '',
+    comportamiento_equipos: row.comportamiento_equipos ?? '',
+  }
 }
 
 async function refereeIdDelUsuario() {
@@ -47,9 +70,13 @@ export async function listMisPartidosParaAutoevaluar(): Promise<PartidoAutoevalu
     .eq('estado', 'confirmado')
   if (dError) throw new Error(dError.message)
 
+  // Una sola query trae el contenido completo de cada autoevaluación existente (no solo
+  // partido_id), para que la página no tenga que volver a pedirlo partido por partido.
   const { data: autoevals, error: aError } = await supabase
     .from('autoevaluacion_partido')
-    .select('partido_id')
+    .select(
+      'partido_id, autocalificacion_general, comentario_autoevaluacion, incidentes_reportados, condiciones_cancha, condiciones_clima, comportamiento_equipos'
+    )
     .eq('referee_id', refereeId)
   if (aError) throw new Error(aError.message)
 
@@ -67,6 +94,10 @@ export async function listMisPartidosParaAutoevaluar(): Promise<PartidoAutoevalu
     }
   })
 
+  const contenidoPorPartido = new Map(
+    (autoevals ?? []).map((a) => [a.partido_id, filaAValores(a)])
+  )
+
   const hoy = new Date().toISOString().slice(0, 10)
   return partidosParaAutoevaluar({
     designaciones: paraFuncion,
@@ -77,6 +108,7 @@ export async function listMisPartidosParaAutoevaluar(): Promise<PartidoAutoevalu
     partido_label: p.partido_label,
     fecha: p.partido_fecha,
     yaAutoevaluado: p.yaAutoevaluado,
+    inicial: contenidoPorPartido.get(p.partido_id) ?? null,
   }))
 }
 

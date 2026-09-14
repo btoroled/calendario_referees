@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getProfile } from '@/lib/auth/getProfile'
+import { ROLES } from '@/lib/auth/roles'
 
 export type EntradaTimelinePartido = {
   partido_id: string
@@ -48,6 +49,18 @@ export async function obtenerPerfilReferee(refereeId: string): Promise<PerfilRef
   if (!perfil) throw new Error('No autorizado.')
   const supabase = await createClient()
 
+  // RLS de `referee_select` no tiene predicado de rol en su rama de scope por región: un
+  // referee cualquiera de la misma región podría, solo vía RLS, ver el perfil de OTRO
+  // referee (con datos reales pero engañosos, ya que designacion/evaluacion/autoevaluacion
+  // sí gatean por usuario_id y devolverían todo en cero). El modelo de acceso del plan es
+  // "el propio referee, designador, evaluador y admin del mismo scope" — no cualquier referee.
+  if (perfil.rol === ROLES.REFEREE) {
+    const miRefereeId = await obtenerMiRefereeId()
+    if (miRefereeId !== refereeId) {
+      throw new Error('Referee no encontrado o fuera de tu alcance.')
+    }
+  }
+
   // RLS de referee/designacion/evaluacion/autoevaluacion limita todo esto al scope permitido.
   const { data: ref, error: refError } = await supabase
     .from('referee')
@@ -85,11 +98,15 @@ export async function obtenerPerfilReferee(refereeId: string): Promise<PerfilRef
   }
   const autoevalPorPartido = new Map((autoevals ?? []).map((a) => [a.partido_id, a]))
 
-  // Determinar la temporada activa para el conteo (la del primer partido con temporada_id).
-  const temporadaActiva =
-    (designaciones ?? [])
-      .map((d) => (d.partido as unknown as { temporada_id: string } | null)?.temporada_id)
-      .find((t) => !!t) ?? null
+  // Temporada(s) activa(s) para el conteo: las de las ligas de la región del referee
+  // (una región puede tener varias ligas, cada una con su propia temporada activa),
+  // no "la primera que aparezca" en las designaciones.
+  const { data: temporadasActivas } = await supabase
+    .from('temporada')
+    .select('id, liga:liga_id!inner(region_id)')
+    .eq('activa', true)
+    .eq('liga.region_id', ref.region_id)
+  const idsTemporadaActiva = new Set((temporadasActivas ?? []).map((t) => t.id))
 
   let designacionesAceptadasEnTemporada = 0
   const timeline: EntradaTimelinePartido[] = (designaciones ?? []).map((d) => {
@@ -100,7 +117,7 @@ export async function obtenerPerfilReferee(refereeId: string): Promise<PerfilRef
       club_local: { nombre: string } | null
       club_visita: { nombre: string } | null
     } | null
-    if (d.estado_aceptacion === 'aceptado' && p?.temporada_id === temporadaActiva) {
+    if (d.estado_aceptacion === 'aceptado' && p?.temporada_id && idsTemporadaActiva.has(p.temporada_id)) {
       designacionesAceptadasEnTemporada++
     }
     const a = autoevalPorPartido.get(d.partido_id)

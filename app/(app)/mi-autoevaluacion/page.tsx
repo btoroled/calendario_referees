@@ -1,8 +1,4 @@
-import {
-  listMisPartidosParaAutoevaluar,
-  obtenerMiAutoevaluacion,
-  guardarAutoevaluacion,
-} from '@/actions/autoevaluaciones'
+import { listMisPartidosParaAutoevaluar, guardarAutoevaluacion } from '@/actions/autoevaluaciones'
 import { AutoevaluacionForm } from '@/components/autoevaluacion/AutoevaluacionForm'
 
 export default async function MiAutoevaluacionPage() {
@@ -17,10 +13,6 @@ export default async function MiAutoevaluacionPage() {
     )
   }
 
-  const valoresPorPartido = await Promise.all(
-    partidos.map((p) => obtenerMiAutoevaluacion(p.partido_id))
-  )
-
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-lg font-semibold">Mi autoevaluación post-partido</h1>
@@ -33,7 +25,7 @@ export default async function MiAutoevaluacionPage() {
         <p className="text-sm text-muted">No tenés partidos jugados para autoevaluar.</p>
       )}
 
-      {partidos.map((p, i) => (
+      {partidos.map((p) => (
         <div key={p.partido_id} className="rounded-lg border border-border bg-surface p-4">
           <p className="text-sm font-medium">{p.partido_label}</p>
           <p className="mb-3 text-xs text-muted">
@@ -41,7 +33,7 @@ export default async function MiAutoevaluacionPage() {
           </p>
           <AutoevaluacionForm
             partidoId={p.partido_id}
-            inicial={valoresPorPartido[i]}
+            inicial={p.inicial}
             guardarAutoevaluacion={guardarAutoevaluacion}
           />
         </div>
