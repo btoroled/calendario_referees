@@ -120,3 +120,63 @@ describe('calcularScore', () => {
     expect(Number.isInteger(r.scoreFinal * 10)).toBe(true)
   })
 })
+
+describe('calcularScore — pulido (spec §14)', () => {
+  it('el mismo referee puede ordenar distinto en normal vs alta complejidad', () => {
+    // Referee fuerte en performance, débil en físico.
+    const evaluaciones = [
+      { tipo: 'performance' as const, valor: 9, fecha: '2026-09-10' },
+      { tipo: 'fisico' as const, valor: 3, fecha: '2026-09-10' },
+    ]
+    const base = { evaluaciones, perteneceAClubDelPartido: false, config: CONFIG, hoy: '2026-09-10' }
+    const normal = calcularScore({ ...base, complejidadPartido: 5 })
+    const alta = calcularScore({ ...base, complejidadPartido: 9 })
+    // En alta complejidad performance pesa más → score más alto para este perfil.
+    expect(alta.scoreFinal).toBeGreaterThan(normal.scoreFinal)
+    expect(alta.desglose.ajustePorComplejidad).toBe(true)
+    expect(normal.desglose.ajustePorComplejidad).toBe(false)
+  })
+
+  it('dos referees con evaluaciones espejadas dan scores simétricos (orden determinístico)', () => {
+    const a = calcularScore({
+      evaluaciones: [{ tipo: 'performance', valor: 8, fecha: '2026-09-10' }],
+      perteneceAClubDelPartido: false,
+      complejidadPartido: 5,
+      config: CONFIG,
+      hoy: '2026-09-10',
+    })
+    const b = calcularScore({
+      evaluaciones: [{ tipo: 'performance', valor: 6, fecha: '2026-09-10' }],
+      perteneceAClubDelPartido: false,
+      complejidadPartido: 5,
+      config: CONFIG,
+      hoy: '2026-09-10',
+    })
+    expect(a.scoreFinal).toBeGreaterThan(b.scoreFinal)
+  })
+
+  it('una evaluación futura (fecha > hoy) no rompe: se trata como edad 0', () => {
+    const r = calcularScore({
+      evaluaciones: [{ tipo: 'performance', valor: 8, fecha: '2027-01-01' }],
+      perteneceAClubDelPartido: false,
+      complejidadPartido: 5,
+      config: CONFIG,
+      hoy: '2026-09-10',
+    })
+    expect(r.scoreFinal).toBe(8)
+  })
+
+  it('config con semividaDias muy corta hace que solo pese la evaluación más reciente', () => {
+    const r = calcularScore({
+      evaluaciones: [
+        { tipo: 'performance', valor: 10, fecha: '2026-09-10' },
+        { tipo: 'performance', valor: 0, fecha: '2026-06-10' }, // 92 días
+      ],
+      perteneceAClubDelPartido: false,
+      complejidadPartido: 5,
+      config: { ...CONFIG, semividaDias: 1 },
+      hoy: '2026-09-10',
+    })
+    expect(r.desglose.valorPorTipo.performance).toBeGreaterThan(9.9)
+  })
+})
