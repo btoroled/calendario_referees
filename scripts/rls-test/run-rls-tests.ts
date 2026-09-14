@@ -844,11 +844,22 @@ async function main() {
     .from('evaluacion')
     .insert({ referee_id: refereeRegionTest!.id, tipo: 'performance', valor: 7, fecha: '2026-09-01' })
 
+  const { data: evalPropiaLima, error: evalPropiaLimaError } = await admin
+    .from('evaluacion')
+    .insert({ referee_id: refereeLima!.id, tipo: 'performance', valor: 6, fecha: '2026-09-01' })
+    .select('id')
+    .single()
+  if (evalPropiaLimaError || !evalPropiaLima) throw new Error(evalPropiaLimaError?.message)
+
   console.log('Caso: evaluador de Lima NO ve evaluaciones de un referee de la región de prueba')
   const clienteEvaluadorLima2 = await iniciarSesionComo(emailEvaluadorLima, password)
   const { data: evalsVistasPorLima } = await clienteEvaluadorLima2
     .from('evaluacion')
     .select('referee_id')
+  assert(
+    (evalsVistasPorLima ?? []).some((e) => e.referee_id === refereeLima!.id),
+    'evaluador de Lima sí ve evaluaciones de un referee de su propia región (control positivo)'
+  )
   assert(
     (evalsVistasPorLima ?? []).every((e) => e.referee_id !== refereeRegionTest!.id),
     'evaluador de Lima no ve evaluaciones de referees de otra región'
@@ -863,6 +874,7 @@ async function main() {
     'evaluador de Lima no puede insertar evaluaciones de referees de otra región (RLS lo bloquea)'
   )
 
+  await admin.from('evaluacion').delete().eq('id', evalPropiaLima.id)
   await admin.from('evaluacion').delete().eq('referee_id', refereeRegionTest!.id)
   await admin.from('referee').delete().eq('id', refereeRegionTest!.id)
 
