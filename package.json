@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:rls": "tsx scripts/rls-test/run-rls-tests.ts"
+    "test": "vitest run",
+    "test:rls": "tsx scripts/rls-test/run-rls-tests.ts",
+    "test:smoke": "tsx scripts/smoke/run.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

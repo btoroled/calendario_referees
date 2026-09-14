@@ -707,6 +707,16 @@ async function main() {
     'designador de otra región no puede actualizar el resultado (RLS lo bloquea o el update no afecta filas, y el valor previo queda intacto)'
   )
 
+  console.log('Caso: designador de la región de prueba NO ve el partido de la Liga Metropolitana (aislamiento de SELECT)')
+  const { data: partidoLimaVistoPorRegionTest } = await clienteDesignadorRegionTest
+    .from('partido')
+    .select('id')
+    .eq('id', partidoParaResultado.id)
+  assert(
+    (partidoLimaVistoPorRegionTest ?? []).length === 0,
+    'designador de la región de prueba no ve el partido de la Liga Metropolitana (aislamiento de SELECT)'
+  )
+
   console.log('Caso: designador de Lima NO puede actualizar el resultado de un partido histórico de su liga')
   const { data: partidoHistorico, error: partidoHistoricoError } = await admin
     .from('partido')
@@ -1059,10 +1069,26 @@ async function main() {
   await limpiarUsuarioDePrueba(emailRefAuto)
   await limpiarUsuarioDePrueba(emailRefAutoOtro)
 
+  // ---- categoria_referee / categoria_minima_mapa ----
+  console.log('Caso: cualquier usuario autenticado lee categoria_referee')
+  const { data: escalafonLeido } = await clienteDesignadorLima.from('categoria_referee').select('nombre')
+  assert((escalafonLeido ?? []).length >= 6, 'categoria_referee es legible por un usuario autenticado')
+
+  console.log('Caso: designador de Lima NO puede insertar en categoria_minima_mapa')
+  const { error: mapaInsertError } = await clienteDesignadorLima
+    .from('categoria_minima_mapa')
+    .insert({ liga_id: LIGA_METRO_ID, categoria: 'X', categoria_minima_referee: 'Regional' })
+  assert(mapaInsertError !== null, 'designador no inserta en categoria_minima_mapa (sin policy de insert para su rol)')
+  // Defensivo: si la policy alguna vez permitiera el insert, no dejar basura en la tabla.
+  await admin.from('categoria_minima_mapa').delete().eq('liga_id', LIGA_METRO_ID).eq('categoria', 'X')
+
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
   await admin.from('temporada').delete().eq('id', temporadaTest.id)
   await admin.from('liga').delete().eq('id', ligaTest.id)
+  // Liga insertada por clienteAdminRegionalLima al inicio del script (caso "admin_regional
+  // de Lima SÍ puede insertar una liga en su región"); no tenía cleanup propio.
+  await admin.from('liga').delete().eq('codigo', `LIGA-TST-${sufijo}`)
   await admin.from('club').delete().eq('id', clubTest2.id)
 
   await admin.from('referee').delete().eq('region_id', LIMA_ID).eq('nombre', `Ref Lima ${sufijo}`)
@@ -1070,12 +1096,37 @@ async function main() {
   await admin.from('club').delete().eq('id', clubLima.id)
   await admin.from('club').delete().eq('id', clubTest.id)
 
-  await admin.from('region').delete().eq('id', regionTest.id)
+  // Los usuarios de prueba deben limpiarse antes que la región: perfil.region_id
+  // referencia region(id) con "on delete restrict", así que si emailEvaluadorTest
+  // (perfil.region_id = regionTest.id) sigue vivo, el delete de región de abajo
+  // falla en silencio y deja la fila huérfana.
   await limpiarUsuarioDePrueba(emailAdminNacional)
   await limpiarUsuarioDePrueba(emailAdminRegionalLima)
   await limpiarUsuarioDePrueba(emailDesignadorLima)
   await limpiarUsuarioDePrueba(emailEvaluadorLima)
   await limpiarUsuarioDePrueba(emailEvaluadorTest)
+  await admin.from('region').delete().eq('id', regionTest.id)
+
+  console.log('\n===== COBERTURA RLS (mapa de referencia; ver detalle de casos arriba) =====')
+  const cobertura: [string, string][] = [
+    ['region', 'select scope (admin_nacional / admin_regional), insert denegado (designador), update denegado (designador)'],
+    ['liga', 'insert (admin_regional en su región), update denegado (designador)'],
+    ['temporada', 'select en cascada por liga'],
+    ['perfil', 'select self + scope'],
+    ['club', 'select scope (admin_nacional / admin_regional), insert denegado (admin_regional fuera de su región)'],
+    ['referee', 'select scope (admin_regional)'],
+    ['categoria_referee', 'select cualquier autenticado'],
+    ['categoria_minima_mapa', 'insert denegado (designador, sin policy de insert para su rol)'],
+    ['disponibilidad', 'select/insert/delete self-only'],
+    ['partido', 'select scope, insert (designador/admin), update_resultado (designador/admin del scope)'],
+    ['configuracion_scoring', 'select scope, update solo admin'],
+    ['evaluacion', 'select self + scope, insert evaluador/admin, aislamiento por región'],
+    ['designacion', 'select referee-confirmada / scope, insert designador/admin, update referee (aceptar)'],
+    ['autoevaluacion_partido', 'insert self+elegible, select self + scope, aislamiento entre referees'],
+  ]
+  for (const [tabla, resumen] of cobertura) {
+    console.log(`  ${tabla.padEnd(24)} ${resumen}`)
+  }
 
   console.log(`\n${fallos === 0 ? 'TODOS LOS CASOS PASARON' : `${fallos} CASO(S) FALLARON`}`)
   process.exit(fallos === 0 ? 0 : 1)
