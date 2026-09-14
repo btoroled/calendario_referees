@@ -145,6 +145,8 @@ export function FixtureManualForm({ ligaId, temporadaId, clubes, crearPartidoMan
           <label className="text-xs text-muted">Jornada (opcional)</label>
           <input
             type="number"
+            min={1}
+            step={1}
             value={jornada}
             onChange={(e) => setJornada(e.target.value)}
             className="rounded border border-border bg-background px-2 py-1 text-foreground"

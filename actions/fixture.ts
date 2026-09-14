@@ -173,15 +173,21 @@ export async function crearPartidoManual(input: {
     throw new Error('El club local y el club visita no pueden ser el mismo.')
   }
 
+  const categoria = input.categoria.trim()
+  const cancha = input.cancha.trim()
+  if (input.jornada !== null && (!Number.isInteger(input.jornada) || input.jornada < 1)) {
+    throw new Error(`Jornada inválida: "${input.jornada}"`)
+  }
+
   const supabase = await createClient()
 
   const { data: mapaFila } = await supabase
     .from('categoria_minima_mapa')
     .select('categoria_minima_referee')
     .eq('liga_id', input.liga_id)
-    .eq('categoria', input.categoria)
+    .eq('categoria', categoria)
     .maybeSingle()
-  const categoriaMinimaReferee = mapaFila?.categoria_minima_referee ?? input.categoria
+  const categoriaMinimaReferee = mapaFila?.categoria_minima_referee ?? categoria
 
   const complejidad = await obtenerComplejidad(supabase, input.club_local_id, input.club_visita_id)
 
@@ -192,8 +198,8 @@ export async function crearPartidoManual(input: {
       temporada_id: input.temporada_id,
       fecha: input.fecha,
       hora: input.hora,
-      cancha: input.cancha || null,
-      categoria: input.categoria,
+      cancha: cancha || null,
+      categoria,
       club_local_id: input.club_local_id,
       club_visita_id: input.club_visita_id,
       jornada: input.jornada,
