@@ -102,18 +102,29 @@ async function main() {
     (misDesig ?? []).length === 1 && misDesig![0].partido_id === partido!.id,
     '2a. el referee ve exactamente su designación confirmada'
   )
-  const { error: eAceptar } = await cRef
+  // El `.select()` es parte de la aserción: un UPDATE bloqueado por RLS no devuelve
+  // error, solo cero filas, así que sin contar las filas devueltas el caso pasaría
+  // igual aunque la policy no otorgara el permiso (ver run-rls-tests.ts:680-682).
+  const { data: aceptarData, error: eAceptar } = await cRef
     .from('designacion')
     .update({ estado_aceptacion: 'aceptado', fecha_respuesta: new Date().toISOString() })
     .eq('id', misDesig![0].id)
-  check(eAceptar === null, '2b. el referee acepta su designación')
+    .select('id, estado_aceptacion')
+  check(
+    eAceptar === null && (aceptarData ?? []).length === 1 && aceptarData![0].estado_aceptacion === 'aceptado',
+    '2b. el referee acepta su designación'
+  )
 
   // --- 3. El designador carga el resultado del partido (RLS: partido_update_resultado) ---
-  const { error: eResultado } = await cDes
+  const { data: resultadoData, error: eResultado } = await cDes
     .from('partido')
     .update({ resultado_local: 24, resultado_visita: 20, tarjetas_amarillas_local: 2, tarjetas_amarillas_visita: 1, tarjetas_rojas_local: 0, tarjetas_rojas_visita: 0 })
     .eq('id', partido!.id)
-  check(eResultado === null, '3. designador carga el resultado del partido jugado')
+    .select('id, resultado_local')
+  check(
+    eResultado === null && (resultadoData ?? []).length === 1 && resultadoData![0].resultado_local === 24,
+    '3. designador carga el resultado del partido jugado'
+  )
 
   // --- 4. El evaluador carga una evaluación (RLS: evaluacion_insert scope) ---
   const cEval = await sesion(evaluador.email, evaluador.password)

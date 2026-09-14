@@ -25,3 +25,7 @@
 ## Batería de tests de cierre (Fase 11)
 
 `npm run lint` · `npm run test` · `npm run test:rls` · `npm run test:smoke` · `npm run build` — todos en verde.
+
+## Notas pre-despliegue
+
+- `npm run build` emite un warning real de Next.js 16: la convención `middleware.ts` está deprecada a favor de `proxy.ts` (el rename también fuerza runtime `nodejs`, no es un cambio cosmético). Se dejó **fuera de alcance** deliberadamente en esta fase de solo-hardening — migrar `middleware.ts` → `proxy.ts` queda diferido a un cambio propio, no incluido en Fase 11.

@@ -1107,16 +1107,16 @@ async function main() {
   await limpiarUsuarioDePrueba(emailEvaluadorTest)
   await admin.from('region').delete().eq('id', regionTest.id)
 
-  console.log('\n===== COBERTURA RLS =====')
+  console.log('\n===== COBERTURA RLS (mapa de referencia; ver detalle de casos arriba) =====')
   const cobertura: [string, string][] = [
-    ['region', 'select scope (admin_nacional / admin_regional), insert (solo admin_nacional), update'],
-    ['liga', 'select scope, insert (admin_nacional / admin_regional), update'],
+    ['region', 'select scope (admin_nacional / admin_regional), insert denegado (designador), update denegado (designador)'],
+    ['liga', 'insert (admin_regional en su región), update denegado (designador)'],
     ['temporada', 'select en cascada por liga'],
     ['perfil', 'select self + scope'],
-    ['club', 'select scope, insert (admin_nacional / admin_regional)'],
-    ['referee', 'select scope, insert (admin)'],
+    ['club', 'select scope (admin_nacional / admin_regional), insert denegado (admin_regional fuera de su región)'],
+    ['referee', 'select scope (admin_regional)'],
     ['categoria_referee', 'select cualquier autenticado'],
-    ['categoria_minima_mapa', 'select scope, sin insert para designador'],
+    ['categoria_minima_mapa', 'insert denegado (designador, sin policy de insert para su rol)'],
     ['disponibilidad', 'select/insert/delete self-only'],
     ['partido', 'select scope, insert (designador/admin), update_resultado (designador/admin del scope)'],
     ['configuracion_scoring', 'select scope, update solo admin'],

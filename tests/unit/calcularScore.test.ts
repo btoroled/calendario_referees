@@ -155,15 +155,28 @@ describe('calcularScore — pulido (spec §14)', () => {
     expect(a.scoreFinal).toBeGreaterThan(b.scoreFinal)
   })
 
-  it('una evaluación futura (fecha > hoy) no rompe: se trata como edad 0', () => {
+  it('una evaluación futura (fecha > hoy) no infla su peso: edad se clampea a 0, no domina el promedio', () => {
+    // Dos evaluaciones de 'performance': una futura con valor BAJO y otra de hoy con valor ALTO.
+    // diasEntre('2027-01-01', '2026-09-10') = -113 días (fecha futura respecto de hoy).
+    // Sin el clamp Math.max(0, edadDias) en calcularScore.ts, la evaluación futura tendría
+    // edadDias = -113 → peso = 0.5^(-113/180) ≈ 1.5452, un peso INFLADO (>1) que la haría
+    // dominar el promedio pese a su valor bajo:
+    //   sin clamp → (2*1.5452 + 8*1) / (1.5452+1) ≈ 4.357
+    // Con el clamp, edadDias = max(0, -113) = 0 → peso = 0.5^(0/180) = 1, igual al peso de
+    // la evaluación de hoy (edadDias=0 → peso=1 también). Promedio simple, sin dominancia:
+    //   valorPorTipo.performance = (2*1 + 8*1) / (1+1) = 10/2 = 5
     const r = calcularScore({
-      evaluaciones: [{ tipo: 'performance', valor: 8, fecha: '2027-01-01' }],
+      evaluaciones: [
+        { tipo: 'performance', valor: 2, fecha: '2027-01-01' }, // futura, valor bajo
+        { tipo: 'performance', valor: 8, fecha: '2026-09-10' }, // hoy, valor alto
+      ],
       perteneceAClubDelPartido: false,
       complejidadPartido: 5,
       config: CONFIG,
       hoy: '2026-09-10',
     })
-    expect(r.scoreFinal).toBe(8)
+    expect(r.desglose.valorPorTipo.performance).toBeCloseTo(5, 5)
+    expect(r.scoreFinal).toBe(5)
   })
 
   it('config con semividaDias muy corta hace que solo pese la evaluación más reciente', () => {

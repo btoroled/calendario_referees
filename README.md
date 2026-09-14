@@ -8,7 +8,8 @@ Next.js (App Router) + Supabase (Postgres + Auth + RLS). Multi-tenant `país →
 npm install
 npx supabase start          # levanta Postgres/Auth/Studio local
 npx supabase db reset       # aplica migraciones + seeds
-cp .env.local.example .env.local   # completar con los valores de `supabase start`
+cp .env.local.example .env.local   # completar con los valores de `supabase start` — usado por Next.js (dev/build)
+cp .env.local.example .env         # mismo contenido — los scripts de test (dotenv/config) leen `.env`, no `.env.local`
 npm run dev
 ```
 
