@@ -79,3 +79,61 @@ describe('calcularComplejidad', () => {
     expect(resultado).toBeLessThanOrEqual(10)
   })
 })
+
+describe('calcularComplejidad — pulido (spec §14)', () => {
+  it('un único enfrentamiento directo ya saca del fallback neutro', () => {
+    const r = calcularComplejidad({
+      partidosDirectos: [
+        {
+          resultado_local: 20,
+          resultado_visita: 19,
+          tarjetas_amarillas_local: 2,
+          tarjetas_amarillas_visita: 2,
+          tarjetas_rojas_local: 0,
+          tarjetas_rojas_visita: 0,
+        },
+      ],
+      partidosClubLocal: [],
+      partidosClubVisita: [],
+    })
+    expect(r).not.toBe(5)
+    expect(r).toBeGreaterThanOrEqual(1)
+    expect(r).toBeLessThanOrEqual(10)
+  })
+
+  it('empate exacto y sin incidentes → paridad máxima, incidentes nulos', () => {
+    const empate = {
+      resultado_local: 15,
+      resultado_visita: 15,
+      tarjetas_amarillas_local: 0,
+      tarjetas_amarillas_visita: 0,
+      tarjetas_rojas_local: 0,
+      tarjetas_rojas_visita: 0,
+    }
+    const r = calcularComplejidad({
+      partidosDirectos: [empate, empate],
+      partidosClubLocal: [],
+      partidosClubVisita: [],
+    })
+    // scoreParidad = 10 (diferencia 0), incidentes 0, tendencia 0 → 0.4*10 = 4 → round 4
+    expect(r).toBe(4)
+  })
+
+  it('tendencia disciplinaria asimétrica entre los dos clubes se promedia', () => {
+    const partidoNeutro = {
+      resultado_local: 25,
+      resultado_visita: 10,
+      tarjetas_amarillas_local: 0,
+      tarjetas_amarillas_visita: 0,
+      tarjetas_rojas_local: 0,
+      tarjetas_rojas_visita: 0,
+    }
+    const r = calcularComplejidad({
+      partidosDirectos: [partidoNeutro],
+      partidosClubLocal: [{ tarjetas_amarillas: 6, tarjetas_rojas: 2 }], // muy indisciplinado
+      partidosClubVisita: [{ tarjetas_amarillas: 0, tarjetas_rojas: 0 }], // impecable
+    })
+    expect(r).toBeGreaterThanOrEqual(1)
+    expect(r).toBeLessThanOrEqual(10)
+  })
+})

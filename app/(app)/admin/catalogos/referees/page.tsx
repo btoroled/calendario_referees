@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { listReferees, listRegiones, listClubes, crearReferee } from '@/actions/catalogos'
 import { RefereeForm } from '@/components/catalogos/RefereeForm'
 
@@ -20,7 +21,11 @@ export default async function RefereesPage() {
         <tbody>
           {referees.map((r) => (
             <tr key={r.id} className="border-t border-border">
-              <td className="px-4 py-2">{r.nombre}</td>
+              <td className="px-4 py-2">
+                <Link href={`/referees/${r.id}`} className="text-primary hover:underline">
+                  {r.nombre}
+                </Link>
+              </td>
               <td className="px-4 py-2">{r.categoria}</td>
               <td className="px-4 py-2">{r.club?.nombre ?? '—'}</td>
               <td className="px-4 py-2">{r.activo ? 'Sí' : 'No'}</td>

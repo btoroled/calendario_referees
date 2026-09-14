@@ -707,6 +707,16 @@ async function main() {
     'designador de otra región no puede actualizar el resultado (RLS lo bloquea o el update no afecta filas, y el valor previo queda intacto)'
   )
 
+  console.log('Caso: designador de la región de prueba NO ve el partido de la Liga Metropolitana (aislamiento de SELECT)')
+  const { data: partidoLimaVistoPorRegionTest } = await clienteDesignadorRegionTest
+    .from('partido')
+    .select('id')
+    .eq('id', partidoParaResultado.id)
+  assert(
+    (partidoLimaVistoPorRegionTest ?? []).length === 0,
+    'designador de la región de prueba no ve el partido de la Liga Metropolitana (aislamiento de SELECT)'
+  )
+
   console.log('Caso: designador de Lima NO puede actualizar el resultado de un partido histórico de su liga')
   const { data: partidoHistorico, error: partidoHistoricoError } = await admin
     .from('partido')
@@ -747,10 +757,338 @@ async function main() {
   await admin.from('partido').delete().eq('id', partidoParaResultado.id)
   await limpiarUsuarioDePrueba(emailDesignadorRegionTest)
 
+  // ---- designacion: el evaluador ve/no-ve según región (Fase 9 Task 7 — migración 0023) ----
+  const { data: refEvaluadorLima, error: refEvaluadorLimaError } = await admin
+    .from('referee')
+    .insert({ region_id: LIMA_ID, club_id: clubLima.id, nombre: `Ref Eval Lima ${sufijo}`, categoria: 'A' })
+    .select('id')
+    .single()
+  if (refEvaluadorLimaError || !refEvaluadorLima) throw new Error(refEvaluadorLimaError?.message)
+
+  const { data: refEvaluadorTest, error: refEvaluadorTestError } = await admin
+    .from('referee')
+    .insert({ region_id: regionTest.id, club_id: clubTest.id, nombre: `Ref Eval Test ${sufijo}`, categoria: 'A' })
+    .select('id')
+    .single()
+  if (refEvaluadorTestError || !refEvaluadorTest) throw new Error(refEvaluadorTestError?.message)
+
+  const { data: partidoEvalLima, error: partidoEvalLimaError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: LIGA_METRO_ID,
+      temporada_id: '44444444-4444-4444-4444-444444444444',
+      fecha: '2026-09-01',
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubAlumni.id,
+      club_visita_id: clubLRC.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoEvalLimaError || !partidoEvalLima) throw new Error(partidoEvalLimaError?.message)
+
+  const { data: partidoEvalTest, error: partidoEvalTestError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: ligaTest.id,
+      temporada_id: temporadaTest.id,
+      fecha: '2026-09-01',
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubTest.id,
+      club_visita_id: clubTest2.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoEvalTestError || !partidoEvalTest) throw new Error(partidoEvalTestError?.message)
+
+  const { data: designacionEvalLima, error: designacionEvalLimaError } = await admin
+    .from('designacion')
+    .insert({ partido_id: partidoEvalLima.id, referee_id: refEvaluadorLima.id, estado: 'confirmado', estado_aceptacion: 'aceptado' })
+    .select('id')
+    .single()
+  if (designacionEvalLimaError || !designacionEvalLima) throw new Error(designacionEvalLimaError?.message)
+
+  const { data: designacionEvalTest, error: designacionEvalTestError } = await admin
+    .from('designacion')
+    .insert({ partido_id: partidoEvalTest.id, referee_id: refEvaluadorTest.id, estado: 'confirmado', estado_aceptacion: 'aceptado' })
+    .select('id')
+    .single()
+  if (designacionEvalTestError || !designacionEvalTest) throw new Error(designacionEvalTestError?.message)
+
+  console.log('Caso: evaluador de Lima ve una designacion confirmada+aceptada de un partido de su región')
+  const clienteEvaluadorLima3 = await iniciarSesionComo(emailEvaluadorLima, password)
+  const { data: desigVistasPorEvaluadorLima } = await clienteEvaluadorLima3
+    .from('designacion')
+    .select('id, partido_id')
+  assert(
+    (desigVistasPorEvaluadorLima ?? []).some((d) => d.id === designacionEvalLima.id),
+    'evaluador de Lima ve la designacion de un partido de su región (migración 0023)'
+  )
+
+  console.log('Caso: evaluador de Lima NO ve una designacion de un partido de otra región')
+  assert(
+    (desigVistasPorEvaluadorLima ?? []).every((d) => d.id !== designacionEvalTest.id),
+    'evaluador de Lima no ve designaciones de partidos de otra región'
+  )
+
+  await admin.from('designacion').delete().eq('id', designacionEvalLima.id)
+  await admin.from('designacion').delete().eq('id', designacionEvalTest.id)
+  await admin.from('partido').delete().eq('id', partidoEvalLima.id)
+  await admin.from('partido').delete().eq('id', partidoEvalTest.id)
+  await admin.from('referee').delete().eq('id', refEvaluadorLima.id)
+  await admin.from('referee').delete().eq('id', refEvaluadorTest.id)
+
+  // ---- evaluacion: aislamiento por región ----
+  const { data: refereeRegionTest } = await admin
+    .from('referee')
+    .insert({ nombre: `ref-regiontest-${sufijo}`, categoria: 'Regional', region_id: regionTest.id })
+    .select('id')
+    .single()
+
+  await admin
+    .from('evaluacion')
+    .insert({ referee_id: refereeRegionTest!.id, tipo: 'performance', valor: 7, fecha: '2026-09-01' })
+
+  const { data: evalPropiaLima, error: evalPropiaLimaError } = await admin
+    .from('evaluacion')
+    .insert({ referee_id: refereeLima!.id, tipo: 'performance', valor: 6, fecha: '2026-09-01' })
+    .select('id')
+    .single()
+  if (evalPropiaLimaError || !evalPropiaLima) throw new Error(evalPropiaLimaError?.message)
+
+  console.log('Caso: evaluador de Lima NO ve evaluaciones de un referee de la región de prueba')
+  const clienteEvaluadorLima2 = await iniciarSesionComo(emailEvaluadorLima, password)
+  const { data: evalsVistasPorLima } = await clienteEvaluadorLima2
+    .from('evaluacion')
+    .select('referee_id')
+  assert(
+    (evalsVistasPorLima ?? []).some((e) => e.referee_id === refereeLima!.id),
+    'evaluador de Lima sí ve evaluaciones de un referee de su propia región (control positivo)'
+  )
+  assert(
+    (evalsVistasPorLima ?? []).every((e) => e.referee_id !== refereeRegionTest!.id),
+    'evaluador de Lima no ve evaluaciones de referees de otra región'
+  )
+
+  console.log('Caso: evaluador de Lima NO puede insertar una evaluación de un referee de otra región')
+  const { error: evalCruzadoError } = await clienteEvaluadorLima2
+    .from('evaluacion')
+    .insert({ referee_id: refereeRegionTest!.id, tipo: 'fisico', valor: 5, fecha: '2026-09-01' })
+  assert(
+    evalCruzadoError !== null,
+    'evaluador de Lima no puede insertar evaluaciones de referees de otra región (RLS lo bloquea)'
+  )
+
+  await admin.from('evaluacion').delete().eq('id', evalPropiaLima.id)
+  await admin.from('evaluacion').delete().eq('referee_id', refereeRegionTest!.id)
+  await admin.from('referee').delete().eq('id', refereeRegionTest!.id)
+
+  // ---- autoevaluacion_partido ----
+  // Reusa: un partido de Lima (clubes semilla ALU/LRC), un referee de Lima con cuenta,
+  // su designacion aceptada. NOTA: `clienteRefereeLima` del bloque de designacion ya
+  // no sirve acá — su usuario fue borrado en `limpiarUsuarioDePrueba(emailRefereeLima)`
+  // más arriba — así que se crean clientes referee nuevos siguiendo el patrón habitual.
+  const { data: partidoAuto, error: partidoAutoError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: LIGA_METRO_ID,
+      temporada_id: '44444444-4444-4444-4444-444444444444',
+      fecha: '2026-09-01', // ya pasó respecto de la fecha de referencia del proyecto
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubAlumni.id,
+      club_visita_id: clubLRC.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoAutoError || !partidoAuto) throw new Error(partidoAutoError?.message)
+
+  const emailRefAuto = `referee-auto-${sufijo}@test.local`
+  const refAutoUserId = await crearUsuarioDePrueba({
+    email: emailRefAuto,
+    password,
+    rol: 'referee',
+    pais_id: null,
+    region_id: LIMA_ID,
+  })
+  const { data: refAuto, error: refAutoError } = await admin
+    .from('referee')
+    .insert({ nombre: emailRefAuto, categoria: 'Regional', region_id: LIMA_ID, usuario_id: refAutoUserId })
+    .select('id')
+    .single()
+  if (refAutoError || !refAuto) throw new Error(refAutoError?.message)
+
+  // Sin designacion aceptada todavía: el INSERT de autoevaluacion debe fallar.
+  const clienteRefAuto = await iniciarSesionComo(emailRefAuto, password)
+  console.log('Caso: el referee NO puede autoevaluar un partido sin designacion aceptada')
+  const { error: autoSinDesigError } = await clienteRefAuto
+    .from('autoevaluacion_partido')
+    .insert({ partido_id: partidoAuto.id, referee_id: refAuto.id, autocalificacion_general: 7 })
+  assert(
+    autoSinDesigError !== null,
+    'el referee no puede autoevaluar sin designacion aceptada (RLS lo bloquea)'
+  )
+
+  // Con designacion aceptada: el INSERT debe pasar.
+  await admin.from('designacion').insert({
+    partido_id: partidoAuto.id,
+    referee_id: refAuto.id,
+    puesto: 'R1',
+    estado: 'confirmado',
+    estado_aceptacion: 'aceptado',
+    fecha_confirmacion: new Date().toISOString(),
+  })
+  console.log('Caso: el referee SÍ puede autoevaluar un partido jugado con designacion aceptada')
+  const { error: autoOkError } = await clienteRefAuto
+    .from('autoevaluacion_partido')
+    .insert({ partido_id: partidoAuto.id, referee_id: refAuto.id, autocalificacion_general: 8 })
+  assert(autoOkError === null, `el referee autoevalúa su partido aceptado${autoOkError ? `: ${autoOkError.message}` : ''}`)
+
+  console.log('Caso: el referee puede corregir el contenido de su autoevaluación (condiciones_cancha)')
+  const { data: autoEditData, error: autoEditError } = await clienteRefAuto
+    .from('autoevaluacion_partido')
+    .update({ condiciones_cancha: 'Cancha en buen estado, drenaje correcto.' })
+    .eq('partido_id', partidoAuto.id)
+    .eq('referee_id', refAuto.id)
+    .select('condiciones_cancha')
+  assert(
+    autoEditError === null &&
+      (autoEditData ?? []).length === 1 &&
+      autoEditData![0].condiciones_cancha === 'Cancha en buen estado, drenaje correcto.',
+    `el referee corrige el contenido de su autoevaluación${autoEditError ? `: ${autoEditError.message}` : ''}`
+  )
+
+  // Segundo partido de Lima, solo para intentar repuntar la autoevaluación (privilege-escalation
+  // shape análoga a designacion_referee_guard, Fase 7). También se reusa más abajo como el
+  // partido "propio" de refAutoOtro para el control positivo del caso 4.
+  const { data: partidoAuto2, error: partidoAuto2Error } = await admin
+    .from('partido')
+    .insert({
+      liga_id: LIGA_METRO_ID,
+      temporada_id: '44444444-4444-4444-4444-444444444444',
+      fecha: '2026-09-02',
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubAlumni.id,
+      club_visita_id: clubLRC.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoAuto2Error || !partidoAuto2) throw new Error(partidoAuto2Error?.message)
+
+  console.log('Caso: el referee NO puede repuntar partido_id de su autoevaluación a otro partido')
+  const { data: autoRepuntarData, error: autoRepuntarError } = await clienteRefAuto
+    .from('autoevaluacion_partido')
+    .update({ partido_id: partidoAuto2.id })
+    .eq('referee_id', refAuto.id)
+    .eq('partido_id', partidoAuto.id)
+    .select('id, partido_id')
+  assert(
+    autoRepuntarError !== null || (autoRepuntarData ?? []).length === 0,
+    `el referee no puede repuntar partido_id de su autoevaluación (trigger autoevaluacion_referee_guard)${autoRepuntarError ? `: ${autoRepuntarError.message}` : ''}`
+  )
+  const { data: autoTrasRepuntar } = await admin
+    .from('autoevaluacion_partido')
+    .select('partido_id')
+    .eq('referee_id', refAuto.id)
+    .single()
+  assert(
+    autoTrasRepuntar?.partido_id === partidoAuto.id,
+    'la autoevaluación sigue apuntando al partido original tras el intento de repunte (trigger autoevaluacion_referee_guard)'
+  )
+
+  console.log('Caso: el evaluador de Lima ve la autoevaluación de un referee de su región')
+  const clienteEvalLimaAuto = await iniciarSesionComo(emailEvaluadorLima, password)
+  const { data: autoevalsVistas } = await clienteEvalLimaAuto
+    .from('autoevaluacion_partido')
+    .select('referee_id')
+  assert(
+    (autoevalsVistas ?? []).some((a) => a.referee_id === refAuto.id),
+    'el evaluador de Lima ve la autoevaluación del referee de su región'
+  )
+
+  const emailRefAutoOtro = `referee-auto-otro-${sufijo}@test.local`
+  const refAutoOtroUserId = await crearUsuarioDePrueba({
+    email: emailRefAutoOtro,
+    password,
+    rol: 'referee',
+    pais_id: null,
+    region_id: LIMA_ID,
+  })
+  const { data: refAutoOtro, error: refAutoOtroError } = await admin
+    .from('referee')
+    .insert({ nombre: emailRefAutoOtro, categoria: 'Regional', region_id: LIMA_ID, usuario_id: refAutoOtroUserId })
+    .select('id')
+    .single()
+  if (refAutoOtroError || !refAutoOtro) throw new Error(refAutoOtroError?.message)
+
+  // Control positivo: refAutoOtro necesita su propia designacion aceptada + autoevaluación
+  // para que el caso de abajo pruebe algo real (que RLS efectivamente filtra por referee),
+  // no solo que un referee sin filas no ve nada. Mismo patrón que faa7071 para evaluacion.
+  await admin.from('designacion').insert({
+    partido_id: partidoAuto2.id,
+    referee_id: refAutoOtro.id,
+    puesto: 'R1',
+    estado: 'confirmado',
+    estado_aceptacion: 'aceptado',
+    fecha_confirmacion: new Date().toISOString(),
+  })
+  const clienteRefAutoOtro = await iniciarSesionComo(emailRefAutoOtro, password)
+  const { error: autoOtroInsertError } = await clienteRefAutoOtro
+    .from('autoevaluacion_partido')
+    .insert({ partido_id: partidoAuto2.id, referee_id: refAutoOtro.id, autocalificacion_general: 6 })
+  if (autoOtroInsertError) throw new Error(autoOtroInsertError.message)
+
+  console.log('Caso: un referee ve su propia autoevaluación pero NO la de otro referee (control positivo)')
+  const { data: autoevalsOtroReferee } = await clienteRefAutoOtro
+    .from('autoevaluacion_partido')
+    .select('referee_id')
+  assert(
+    (autoevalsOtroReferee ?? []).length === 1 && autoevalsOtroReferee![0].referee_id === refAutoOtro.id,
+    'un referee ve exactamente su propia autoevaluación (control positivo) y no la de otro referee'
+  )
+
+  // Limpieza
+  await admin.from('autoevaluacion_partido').delete().eq('referee_id', refAuto.id)
+  await admin.from('autoevaluacion_partido').delete().eq('referee_id', refAutoOtro.id)
+  await admin.from('designacion').delete().eq('partido_id', partidoAuto.id)
+  await admin.from('designacion').delete().eq('partido_id', partidoAuto2.id)
+  await admin.from('referee').delete().eq('id', refAuto.id)
+  await admin.from('referee').delete().eq('id', refAutoOtro.id)
+  await admin.from('partido').delete().eq('id', partidoAuto.id)
+  await admin.from('partido').delete().eq('id', partidoAuto2.id)
+  await limpiarUsuarioDePrueba(emailRefAuto)
+  await limpiarUsuarioDePrueba(emailRefAutoOtro)
+
+  // ---- categoria_referee / categoria_minima_mapa ----
+  console.log('Caso: cualquier usuario autenticado lee categoria_referee')
+  const { data: escalafonLeido } = await clienteDesignadorLima.from('categoria_referee').select('nombre')
+  assert((escalafonLeido ?? []).length >= 6, 'categoria_referee es legible por un usuario autenticado')
+
+  console.log('Caso: designador de Lima NO puede insertar en categoria_minima_mapa')
+  const { error: mapaInsertError } = await clienteDesignadorLima
+    .from('categoria_minima_mapa')
+    .insert({ liga_id: LIGA_METRO_ID, categoria: 'X', categoria_minima_referee: 'Regional' })
+  assert(mapaInsertError !== null, 'designador no inserta en categoria_minima_mapa (sin policy de insert para su rol)')
+  // Defensivo: si la policy alguna vez permitiera el insert, no dejar basura en la tabla.
+  await admin.from('categoria_minima_mapa').delete().eq('liga_id', LIGA_METRO_ID).eq('categoria', 'X')
+
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
   await admin.from('temporada').delete().eq('id', temporadaTest.id)
   await admin.from('liga').delete().eq('id', ligaTest.id)
+  // Liga insertada por clienteAdminRegionalLima al inicio del script (caso "admin_regional
+  // de Lima SÍ puede insertar una liga en su región"); no tenía cleanup propio.
+  await admin.from('liga').delete().eq('codigo', `LIGA-TST-${sufijo}`)
   await admin.from('club').delete().eq('id', clubTest2.id)
 
   await admin.from('referee').delete().eq('region_id', LIMA_ID).eq('nombre', `Ref Lima ${sufijo}`)
@@ -758,12 +1096,37 @@ async function main() {
   await admin.from('club').delete().eq('id', clubLima.id)
   await admin.from('club').delete().eq('id', clubTest.id)
 
-  await admin.from('region').delete().eq('id', regionTest.id)
+  // Los usuarios de prueba deben limpiarse antes que la región: perfil.region_id
+  // referencia region(id) con "on delete restrict", así que si emailEvaluadorTest
+  // (perfil.region_id = regionTest.id) sigue vivo, el delete de región de abajo
+  // falla en silencio y deja la fila huérfana.
   await limpiarUsuarioDePrueba(emailAdminNacional)
   await limpiarUsuarioDePrueba(emailAdminRegionalLima)
   await limpiarUsuarioDePrueba(emailDesignadorLima)
   await limpiarUsuarioDePrueba(emailEvaluadorLima)
   await limpiarUsuarioDePrueba(emailEvaluadorTest)
+  await admin.from('region').delete().eq('id', regionTest.id)
+
+  console.log('\n===== COBERTURA RLS (mapa de referencia; ver detalle de casos arriba) =====')
+  const cobertura: [string, string][] = [
+    ['region', 'select scope (admin_nacional / admin_regional), insert denegado (designador), update denegado (designador)'],
+    ['liga', 'insert (admin_regional en su región), update denegado (designador)'],
+    ['temporada', 'select en cascada por liga'],
+    ['perfil', 'select self + scope'],
+    ['club', 'select scope (admin_nacional / admin_regional), insert denegado (admin_regional fuera de su región)'],
+    ['referee', 'select scope (admin_regional)'],
+    ['categoria_referee', 'select cualquier autenticado'],
+    ['categoria_minima_mapa', 'insert denegado (designador, sin policy de insert para su rol)'],
+    ['disponibilidad', 'select/insert/delete self-only'],
+    ['partido', 'select scope, insert (designador/admin), update_resultado (designador/admin del scope)'],
+    ['configuracion_scoring', 'select scope, update solo admin'],
+    ['evaluacion', 'select self + scope, insert evaluador/admin, aislamiento por región'],
+    ['designacion', 'select referee-confirmada / scope, insert designador/admin, update referee (aceptar)'],
+    ['autoevaluacion_partido', 'insert self+elegible, select self + scope, aislamiento entre referees'],
+  ]
+  for (const [tabla, resumen] of cobertura) {
+    console.log(`  ${tabla.padEnd(24)} ${resumen}`)
+  }
 
   console.log(`\n${fallos === 0 ? 'TODOS LOS CASOS PASARON' : `${fallos} CASO(S) FALLARON`}`)
   process.exit(fallos === 0 ? 0 : 1)
