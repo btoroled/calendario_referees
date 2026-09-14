@@ -28,6 +28,9 @@ export function ConfiguracionScoringForm({
 }) {
   const router = useRouter()
   const [form, setForm] = useState<ConfiguracionScoringFila>(inicial)
+  const [textoNumericos, setTextoNumericos] = useState<Record<string, string>>(() =>
+    Object.fromEntries(CAMPOS_NUMERICOS.map((c) => [c.key, String(inicial[c.key])])),
+  )
   const [error, setError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -57,8 +60,12 @@ export function ConfiguracionScoringForm({
             <input
               type="number"
               step={c.step}
-              value={String(form[c.key])}
-              onChange={(e) => setForm((f) => ({ ...f, [c.key]: Number(e.target.value) }))}
+              value={textoNumericos[c.key]}
+              onChange={(e) => {
+                const texto = e.target.value
+                setTextoNumericos((t) => ({ ...t, [c.key]: texto }))
+                setForm((f) => ({ ...f, [c.key]: Number(texto) }))
+              }}
               className="rounded border border-border bg-background px-2 py-1 text-foreground"
             />
           </div>
