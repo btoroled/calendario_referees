@@ -35,6 +35,8 @@ export async function middleware(request: NextRequest) {
     '/fixture',
     '/evaluaciones',
     '/referees',
+    '/mi-autoevaluacion',
+    '/mi-perfil',
   ]
   const esProtegida = rutasProtegidas.some((p) => request.nextUrl.pathname.startsWith(p))
 
