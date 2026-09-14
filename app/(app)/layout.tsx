@@ -27,6 +27,8 @@ const NAV_POR_ROL: Record<Rol, { href: string; label: string }[]> = {
   [ROLES.REFEREE]: [
     { href: '/disponibilidad', label: 'Mi disponibilidad' },
     { href: '/mis-designaciones', label: 'Mis designaciones' },
+    { href: '/mi-autoevaluacion', label: 'Mi autoevaluación' },
+    { href: '/mi-perfil', label: 'Mi perfil' },
   ],
 }
 

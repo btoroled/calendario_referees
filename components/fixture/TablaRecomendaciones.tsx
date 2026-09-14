@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useState } from 'react'
+import Link from 'next/link'
 import type { RecomendacionReferee } from '@/actions/recomendaciones'
 import type { DesignacionVigente } from '@/actions/designaciones'
 import { BotonConfirmarDesignacion } from '@/components/designacion/BotonConfirmarDesignacion'
@@ -83,7 +84,11 @@ export function TablaRecomendaciones({
             <Fragment key={rec.referee_id}>
               <tr className="border-t border-border">
                 <td className="px-4 py-2">{i + 1}</td>
-                <td className="px-4 py-2">{rec.nombre}</td>
+                <td className="px-4 py-2">
+                  <Link href={`/referees/${rec.referee_id}`} className="text-primary hover:underline">
+                    {rec.nombre}
+                  </Link>
+                </td>
                 <td className="px-4 py-2">{rec.club_nombre ?? '—'}</td>
                 <td className="px-4 py-2">{rec.categoria}</td>
                 <td className="px-4 py-2 font-semibold">{rec.score.scoreFinal.toFixed(1)}</td>
