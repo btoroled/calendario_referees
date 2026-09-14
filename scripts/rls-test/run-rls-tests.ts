@@ -878,6 +878,113 @@ async function main() {
   await admin.from('evaluacion').delete().eq('referee_id', refereeRegionTest!.id)
   await admin.from('referee').delete().eq('id', refereeRegionTest!.id)
 
+  // ---- autoevaluacion_partido ----
+  // Reusa: un partido de Lima (clubes semilla ALU/LRC), un referee de Lima con cuenta,
+  // su designacion aceptada. NOTA: `clienteRefereeLima` del bloque de designacion ya
+  // no sirve acá — su usuario fue borrado en `limpiarUsuarioDePrueba(emailRefereeLima)`
+  // más arriba — así que se crean clientes referee nuevos siguiendo el patrón habitual.
+  const { data: partidoAuto, error: partidoAutoError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: LIGA_METRO_ID,
+      temporada_id: '44444444-4444-4444-4444-444444444444',
+      fecha: '2026-09-01', // ya pasó respecto de la fecha de referencia del proyecto
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubAlumni.id,
+      club_visita_id: clubLRC.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoAutoError || !partidoAuto) throw new Error(partidoAutoError?.message)
+
+  const emailRefAuto = `referee-auto-${sufijo}@test.local`
+  const refAutoUserId = await crearUsuarioDePrueba({
+    email: emailRefAuto,
+    password,
+    rol: 'referee',
+    pais_id: null,
+    region_id: LIMA_ID,
+  })
+  const { data: refAuto, error: refAutoError } = await admin
+    .from('referee')
+    .insert({ nombre: emailRefAuto, categoria: 'Regional', region_id: LIMA_ID, usuario_id: refAutoUserId })
+    .select('id')
+    .single()
+  if (refAutoError || !refAuto) throw new Error(refAutoError?.message)
+
+  // Sin designacion aceptada todavía: el INSERT de autoevaluacion debe fallar.
+  const clienteRefAuto = await iniciarSesionComo(emailRefAuto, password)
+  console.log('Caso: el referee NO puede autoevaluar un partido sin designacion aceptada')
+  const { error: autoSinDesigError } = await clienteRefAuto
+    .from('autoevaluacion_partido')
+    .insert({ partido_id: partidoAuto.id, referee_id: refAuto.id, autocalificacion_general: 7 })
+  assert(
+    autoSinDesigError !== null,
+    'el referee no puede autoevaluar sin designacion aceptada (RLS lo bloquea)'
+  )
+
+  // Con designacion aceptada: el INSERT debe pasar.
+  await admin.from('designacion').insert({
+    partido_id: partidoAuto.id,
+    referee_id: refAuto.id,
+    puesto: 'R1',
+    estado: 'confirmado',
+    estado_aceptacion: 'aceptado',
+    fecha_confirmacion: new Date().toISOString(),
+  })
+  console.log('Caso: el referee SÍ puede autoevaluar un partido jugado con designacion aceptada')
+  const { error: autoOkError } = await clienteRefAuto
+    .from('autoevaluacion_partido')
+    .insert({ partido_id: partidoAuto.id, referee_id: refAuto.id, autocalificacion_general: 8 })
+  assert(autoOkError === null, `el referee autoevalúa su partido aceptado${autoOkError ? `: ${autoOkError.message}` : ''}`)
+
+  console.log('Caso: el evaluador de Lima ve la autoevaluación de un referee de su región')
+  const clienteEvalLimaAuto = await iniciarSesionComo(emailEvaluadorLima, password)
+  const { data: autoevalsVistas } = await clienteEvalLimaAuto
+    .from('autoevaluacion_partido')
+    .select('referee_id')
+  assert(
+    (autoevalsVistas ?? []).some((a) => a.referee_id === refAuto.id),
+    'el evaluador de Lima ve la autoevaluación del referee de su región'
+  )
+
+  const emailRefAutoOtro = `referee-auto-otro-${sufijo}@test.local`
+  const refAutoOtroUserId = await crearUsuarioDePrueba({
+    email: emailRefAutoOtro,
+    password,
+    rol: 'referee',
+    pais_id: null,
+    region_id: LIMA_ID,
+  })
+  const { data: refAutoOtro, error: refAutoOtroError } = await admin
+    .from('referee')
+    .insert({ nombre: emailRefAutoOtro, categoria: 'Regional', region_id: LIMA_ID, usuario_id: refAutoOtroUserId })
+    .select('id')
+    .single()
+  if (refAutoOtroError || !refAutoOtro) throw new Error(refAutoOtroError?.message)
+
+  console.log('Caso: un referee NO ve la autoevaluación de otro referee')
+  const clienteRefAutoOtro = await iniciarSesionComo(emailRefAutoOtro, password)
+  const { data: autoevalsOtroReferee } = await clienteRefAutoOtro
+    .from('autoevaluacion_partido')
+    .select('referee_id')
+  assert(
+    (autoevalsOtroReferee ?? []).every((a) => a.referee_id !== refAuto.id),
+    'un referee no ve autoevaluaciones de otros referees'
+  )
+
+  // Limpieza
+  await admin.from('autoevaluacion_partido').delete().eq('referee_id', refAuto.id)
+  await admin.from('designacion').delete().eq('partido_id', partidoAuto.id)
+  await admin.from('referee').delete().eq('id', refAuto.id)
+  await admin.from('referee').delete().eq('id', refAutoOtro.id)
+  await admin.from('partido').delete().eq('id', partidoAuto.id)
+  await limpiarUsuarioDePrueba(emailRefAuto)
+  await limpiarUsuarioDePrueba(emailRefAutoOtro)
+
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
   await admin.from('temporada').delete().eq('id', temporadaTest.id)
