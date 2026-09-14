@@ -747,6 +747,92 @@ async function main() {
   await admin.from('partido').delete().eq('id', partidoParaResultado.id)
   await limpiarUsuarioDePrueba(emailDesignadorRegionTest)
 
+  // ---- designacion: el evaluador ve/no-ve según región (Fase 9 Task 7 — migración 0023) ----
+  const { data: refEvaluadorLima, error: refEvaluadorLimaError } = await admin
+    .from('referee')
+    .insert({ region_id: LIMA_ID, club_id: clubLima.id, nombre: `Ref Eval Lima ${sufijo}`, categoria: 'A' })
+    .select('id')
+    .single()
+  if (refEvaluadorLimaError || !refEvaluadorLima) throw new Error(refEvaluadorLimaError?.message)
+
+  const { data: refEvaluadorTest, error: refEvaluadorTestError } = await admin
+    .from('referee')
+    .insert({ region_id: regionTest.id, club_id: clubTest.id, nombre: `Ref Eval Test ${sufijo}`, categoria: 'A' })
+    .select('id')
+    .single()
+  if (refEvaluadorTestError || !refEvaluadorTest) throw new Error(refEvaluadorTestError?.message)
+
+  const { data: partidoEvalLima, error: partidoEvalLimaError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: LIGA_METRO_ID,
+      temporada_id: '44444444-4444-4444-4444-444444444444',
+      fecha: '2026-09-01',
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubAlumni.id,
+      club_visita_id: clubLRC.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoEvalLimaError || !partidoEvalLima) throw new Error(partidoEvalLimaError?.message)
+
+  const { data: partidoEvalTest, error: partidoEvalTestError } = await admin
+    .from('partido')
+    .insert({
+      liga_id: ligaTest.id,
+      temporada_id: temporadaTest.id,
+      fecha: '2026-09-01',
+      hora: '15:00',
+      categoria: 'Regional',
+      club_local_id: clubTest.id,
+      club_visita_id: clubTest2.id,
+      categoria_minima_referee: 'Regional',
+      es_historico: false,
+    })
+    .select('id')
+    .single()
+  if (partidoEvalTestError || !partidoEvalTest) throw new Error(partidoEvalTestError?.message)
+
+  const { data: designacionEvalLima, error: designacionEvalLimaError } = await admin
+    .from('designacion')
+    .insert({ partido_id: partidoEvalLima.id, referee_id: refEvaluadorLima.id, estado: 'confirmado', estado_aceptacion: 'aceptado' })
+    .select('id')
+    .single()
+  if (designacionEvalLimaError || !designacionEvalLima) throw new Error(designacionEvalLimaError?.message)
+
+  const { data: designacionEvalTest, error: designacionEvalTestError } = await admin
+    .from('designacion')
+    .insert({ partido_id: partidoEvalTest.id, referee_id: refEvaluadorTest.id, estado: 'confirmado', estado_aceptacion: 'aceptado' })
+    .select('id')
+    .single()
+  if (designacionEvalTestError || !designacionEvalTest) throw new Error(designacionEvalTestError?.message)
+
+  console.log('Caso: evaluador de Lima ve una designacion confirmada+aceptada de un partido de su región')
+  const clienteEvaluadorLima3 = await iniciarSesionComo(emailEvaluadorLima, password)
+  const { data: desigVistasPorEvaluadorLima } = await clienteEvaluadorLima3
+    .from('designacion')
+    .select('id, partido_id')
+  assert(
+    (desigVistasPorEvaluadorLima ?? []).some((d) => d.id === designacionEvalLima.id),
+    'evaluador de Lima ve la designacion de un partido de su región (migración 0023)'
+  )
+
+  console.log('Caso: evaluador de Lima NO ve una designacion de un partido de otra región')
+  assert(
+    (desigVistasPorEvaluadorLima ?? []).every((d) => d.id !== designacionEvalTest.id),
+    'evaluador de Lima no ve designaciones de partidos de otra región'
+  )
+
+  await admin.from('designacion').delete().eq('id', designacionEvalLima.id)
+  await admin.from('designacion').delete().eq('id', designacionEvalTest.id)
+  await admin.from('partido').delete().eq('id', partidoEvalLima.id)
+  await admin.from('partido').delete().eq('id', partidoEvalTest.id)
+  await admin.from('referee').delete().eq('id', refEvaluadorLima.id)
+  await admin.from('referee').delete().eq('id', refEvaluadorTest.id)
+
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
   await admin.from('temporada').delete().eq('id', temporadaTest.id)
