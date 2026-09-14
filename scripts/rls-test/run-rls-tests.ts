@@ -833,6 +833,39 @@ async function main() {
   await admin.from('referee').delete().eq('id', refEvaluadorLima.id)
   await admin.from('referee').delete().eq('id', refEvaluadorTest.id)
 
+  // ---- evaluacion: aislamiento por región ----
+  const { data: refereeRegionTest } = await admin
+    .from('referee')
+    .insert({ nombre: `ref-regiontest-${sufijo}`, categoria: 'Regional', region_id: regionTest.id })
+    .select('id')
+    .single()
+
+  await admin
+    .from('evaluacion')
+    .insert({ referee_id: refereeRegionTest!.id, tipo: 'performance', valor: 7, fecha: '2026-09-01' })
+
+  console.log('Caso: evaluador de Lima NO ve evaluaciones de un referee de la región de prueba')
+  const clienteEvaluadorLima2 = await iniciarSesionComo(emailEvaluadorLima, password)
+  const { data: evalsVistasPorLima } = await clienteEvaluadorLima2
+    .from('evaluacion')
+    .select('referee_id')
+  assert(
+    (evalsVistasPorLima ?? []).every((e) => e.referee_id !== refereeRegionTest!.id),
+    'evaluador de Lima no ve evaluaciones de referees de otra región'
+  )
+
+  console.log('Caso: evaluador de Lima NO puede insertar una evaluación de un referee de otra región')
+  const { error: evalCruzadoError } = await clienteEvaluadorLima2
+    .from('evaluacion')
+    .insert({ referee_id: refereeRegionTest!.id, tipo: 'fisico', valor: 5, fecha: '2026-09-01' })
+  assert(
+    evalCruzadoError !== null,
+    'evaluador de Lima no puede insertar evaluaciones de referees de otra región (RLS lo bloquea)'
+  )
+
+  await admin.from('evaluacion').delete().eq('referee_id', refereeRegionTest!.id)
+  await admin.from('referee').delete().eq('id', refereeRegionTest!.id)
+
   await admin.from('partido').delete().eq('liga_id', ligaTest.id)
   await admin.from('partido').delete().eq('liga_id', '33333333-3333-3333-3333-333333333333').eq('club_local_id', clubLima.id)
   await admin.from('temporada').delete().eq('id', temporadaTest.id)
