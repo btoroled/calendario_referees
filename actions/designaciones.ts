@@ -8,6 +8,7 @@ import { ROLES } from '@/lib/auth/roles'
 import { recomendarReferees } from '@/actions/recomendaciones'
 import { obtenerTransport } from '@/lib/email/transport'
 import { emailNuevaDesignacion, emailRechazo } from '@/lib/email/mensajes'
+import { refereeTieneEvaluacionesPendientes, type DesignacionAceptada } from '@/lib/evaluacion/pendientes'
 
 function servicio() {
   return createServiceClient(
@@ -72,6 +73,58 @@ export async function confirmarDesignacion(input: {
     (r) => r.referee_id === input.refereeId
   )
   const scoreSnapshot = fila?.score ?? null
+
+  const { data: partidoLiga } = await db
+    .from('partido')
+    .select('liga_id')
+    .eq('id', input.partidoId)
+    .single()
+  const ligaId = partidoLiga?.liga_id
+
+  if (ligaId) {
+    const { data: cfg } = await db
+      .from('configuracion_scoring')
+      .select('evaluacion_bloqueante')
+      .eq('liga_id', ligaId)
+      .maybeSingle()
+
+    if (cfg?.evaluacion_bloqueante) {
+      const { data: aceptadasRaw } = await db
+        .from('designacion')
+        .select('referee_id, partido_id, partido:partido_id(fecha, liga_id)')
+        .eq('referee_id', input.refereeId)
+        .eq('estado', 'confirmado')
+        .eq('estado_aceptacion', 'aceptado')
+      const { data: evalsRef } = await db
+        .from('evaluacion')
+        .select('referee_id, partido_id')
+        .eq('referee_id', input.refereeId)
+
+      const aceptadas: DesignacionAceptada[] = (aceptadasRaw ?? []).map((d) => {
+        const p = d.partido as unknown as { fecha: string; liga_id: string } | null
+        return {
+          referee_id: d.referee_id,
+          partido_id: d.partido_id,
+          partido_fecha: p?.fecha ?? '9999-12-31',
+          liga_id: p?.liga_id ?? '',
+        }
+      })
+
+      const bloqueado = refereeTieneEvaluacionesPendientes({
+        refereeId: input.refereeId,
+        ligaId,
+        designacionesAceptadas: aceptadas,
+        evaluaciones: evalsRef ?? [],
+        hoy: new Date().toISOString().slice(0, 10),
+      })
+      if (bloqueado) {
+        throw new Error(
+          'El referee tiene partidos jugados sin evaluar en esta liga. La configuración de la liga ' +
+            'bloquea nuevas designaciones hasta que se completen esas evaluaciones.'
+        )
+      }
+    }
+  }
 
   // Reasignar: la designación vigente previa (si hay) pasa a 'reemplazado'.
   const { data: previa } = await db
