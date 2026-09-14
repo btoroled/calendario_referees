@@ -53,6 +53,14 @@ export default async function DetallePartidoPage({
             {designacionVigente.estado_aceptacion}
           </p>
         )}
+        {p.fecha <= new Date().toISOString().slice(0, 10) && (
+          <Link
+            href={`/fixture/${partidoId}/resultado`}
+            className="mt-2 inline-block text-sm text-primary hover:underline"
+          >
+            Cargar / editar resultado del partido
+          </Link>
+        )}
       </div>
 
       <h2 className="text-base font-semibold">Referees recomendados (puesto R1)</h2>
