@@ -75,3 +75,57 @@ where id = (
   order by nombre
   limit 1
 );
+
+-- 5. Referees cargados a mano post-migración 0011 (vía UI de admin), nunca
+--    versionados hasta ahora — sin esto se pierden en cada `db reset`.
+update public.referee set nombre = 'Luis Lopez', arbitro_activo = false where nombre = 'Lucho Lopez';
+update public.referee set arbitro_activo = false where nombre in ('Jonathan Bauza', 'Wilmer Peralta');
+
+insert into public.referee (nombre, categoria, club_id, region_id, arbitro_activo)
+select r.nombre, 'Regional', c.id, '22222222-2222-2222-2222-222222222222', r.arbitro_activo
+from (
+  values
+    ('Alan Benavides', 'LRC', false),
+    ('Benjamin Toro', null, true),
+    ('Brenda Llanos', 'BLU', false),
+    ('Carlos Achancaray', 'FLL', false),
+    ('Erick Taboada', 'ALU', false),
+    ('Jonathan Valdivia', 'BSH', false),
+    ('Lisbeth Ccarampa', 'ALU', false),
+    ('Marcelo Elias Brown', null, false),
+    ('Mathias Ccorihuaman', 'FLL', false),
+    ('Renzo Figueroa', 'FLL', false),
+    ('Sergio Charlo', 'NAV', false),
+    ('Vincenzo Caro', 'LRC', false)
+) as r(nombre, club_codigo, arbitro_activo)
+left join public.club c on c.codigo = r.club_codigo;
+
+-- 6. jugador_activo: releva quién es referee y también jugador activo hoy.
+update public.referee set jugador_activo = true
+where nombre in (
+  'Alejandra Navarro', 'Andreina Ferrer', 'Cristian Quispe', 'Daniel Valera',
+  'David Villagra', 'Ernesto Cuadra', 'Fernando Farfan', 'Fitzgerald Suarez',
+  'Geiner Vargas', 'Giovani Sinche', 'Hatsumi Higa', 'Jonathan Bauza',
+  'Jonathan Valdivia', 'Jose Barahona', 'Katherine Guerrero', 'Lisbeth Ccarampa',
+  'Lucero Baca', 'Mathias Ccorihuaman', 'Natalie Barbier', 'Nicolas Ramirez',
+  'Raymi Requena', 'Renzo Figueroa', 'Renzo Flores Lecca', 'Salvador Diez Canseco',
+  'Salvador Perez', 'Sergio Charlo', 'Vincenzo Caro', 'Wilmer Peralta'
+);
+
+-- 7. Referees relevados en una segunda pasada del roster (mismo origen que la
+--    sección 5: cargados a mano, nunca versionados).
+insert into public.referee (nombre, categoria, club_id, region_id, arbitro_activo, jugador_activo)
+select r.nombre, 'Regional', c.id, '22222222-2222-2222-2222-222222222222', r.arbitro_activo, r.jugador_activo
+from (
+  values
+    ('Jose Garcia', 'DRA', true, false),
+    ('Joanne Sanford', 'FLL', false, false),
+    ('Josselyn Caja', 'ALU', false, true),
+    ('Clement Pierre', 'NAV', false, true),
+    ('Fiorella Salazar', null, false, false),
+    ('Ricardo Cardenas', 'LRC', true, true),
+    ('Alexis Garcia', 'BSH', false, false),
+    ('Felix Colmenares', 'LRC', false, false),
+    ('Breinner Colmenares', 'LRC', false, true)
+) as r(nombre, club_codigo, arbitro_activo, jugador_activo)
+left join public.club c on c.codigo = r.club_codigo;

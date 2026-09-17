@@ -104,7 +104,8 @@ export type Referee = {
   id: string
   nombre: string
   categoria: string
-  activo: boolean
+  arbitro_activo: boolean
+  jugador_activo: boolean
   club_id: string | null
   region_id: string
   club: { nombre: string } | null
@@ -114,7 +115,7 @@ export async function listReferees(): Promise<Referee[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('referee')
-    .select('id, nombre, categoria, activo, club_id, region_id, club:club(nombre)')
+    .select('id, nombre, categoria, arbitro_activo, jugador_activo, club_id, region_id, club:club(nombre)')
     .order('nombre')
   if (error) throw new Error(error.message)
   return data as unknown as Referee[]
@@ -132,7 +133,7 @@ export async function crearReferee(input: {
   }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('referee').insert({ ...input, activo: true })
+  const { error } = await supabase.from('referee').insert({ ...input, arbitro_activo: true })
   if (error) throw new Error(error.message)
 
   revalidatePath('/admin/catalogos/referees')
