@@ -99,3 +99,15 @@ from (
     ('Vincenzo Caro', 'LRC', false)
 ) as r(nombre, club_codigo, activo)
 left join public.club c on c.codigo = r.club_codigo;
+
+-- 6. jugador_activo: releva quién es referee y también jugador activo hoy.
+update public.referee set jugador_activo = true
+where nombre in (
+  'Andreina Ferrer', 'Cristian Quispe', 'Daniel Valera', 'David Villagra',
+  'Ernesto Cuadra', 'Fernando Farfan', 'Fitzgerald Suarez', 'Geiner Vargas',
+  'Giovani Sinche', 'Hatsumi Higa', 'Jonathan Bauza', 'Jonathan Valdivia',
+  'Jose Barahona', 'Katherine Guerrero', 'Lisbeth Ccarampa', 'Lucero Baca',
+  'Natalie Barbier', 'Nicolas Ramirez', 'Raymi Requena', 'Renzo Figueroa',
+  'Renzo Flores Lecca', 'Salvador Diez Canseco', 'Salvador Perez',
+  'Sergio Charlo', 'Vincenzo Caro', 'Wilmer Peralta'
+);
