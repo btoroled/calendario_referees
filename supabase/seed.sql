@@ -92,7 +92,7 @@ from (
     ('Erick Taboada', 'ALU', false),
     ('Jonathan Valdivia', 'BSH', false),
     ('Lisbeth Ccarampa', 'ALU', false),
-    ('Marcelo Elias Brown', 'BLU', true),
+    ('Marcelo Elias Brown', null, true),
     ('Mathias Ccorihuaman', 'FLL', false),
     ('Renzo Figueroa', 'FLL', false),
     ('Sergio Charlo', 'NAV', false),
@@ -103,11 +103,29 @@ left join public.club c on c.codigo = r.club_codigo;
 -- 6. jugador_activo: releva quién es referee y también jugador activo hoy.
 update public.referee set jugador_activo = true
 where nombre in (
-  'Andreina Ferrer', 'Cristian Quispe', 'Daniel Valera', 'David Villagra',
-  'Ernesto Cuadra', 'Fernando Farfan', 'Fitzgerald Suarez', 'Geiner Vargas',
-  'Giovani Sinche', 'Hatsumi Higa', 'Jonathan Bauza', 'Jonathan Valdivia',
-  'Jose Barahona', 'Katherine Guerrero', 'Lisbeth Ccarampa', 'Lucero Baca',
-  'Natalie Barbier', 'Nicolas Ramirez', 'Raymi Requena', 'Renzo Figueroa',
-  'Renzo Flores Lecca', 'Salvador Diez Canseco', 'Salvador Perez',
-  'Sergio Charlo', 'Vincenzo Caro', 'Wilmer Peralta'
+  'Alejandra Navarro', 'Andreina Ferrer', 'Cristian Quispe', 'Daniel Valera',
+  'David Villagra', 'Ernesto Cuadra', 'Fernando Farfan', 'Fitzgerald Suarez',
+  'Geiner Vargas', 'Giovani Sinche', 'Hatsumi Higa', 'Jonathan Bauza',
+  'Jonathan Valdivia', 'Jose Barahona', 'Katherine Guerrero', 'Lisbeth Ccarampa',
+  'Lucero Baca', 'Mathias Ccorihuaman', 'Natalie Barbier', 'Nicolas Ramirez',
+  'Raymi Requena', 'Renzo Figueroa', 'Renzo Flores Lecca', 'Salvador Diez Canseco',
+  'Salvador Perez', 'Sergio Charlo', 'Vincenzo Caro', 'Wilmer Peralta'
 );
+
+-- 7. Referees relevados en una segunda pasada del roster (mismo origen que la
+--    sección 5: cargados a mano, nunca versionados).
+insert into public.referee (nombre, categoria, club_id, region_id, arbitro_activo, jugador_activo)
+select r.nombre, 'Regional', c.id, '22222222-2222-2222-2222-222222222222', r.arbitro_activo, r.jugador_activo
+from (
+  values
+    ('Jose Garcia', 'DRA', true, false),
+    ('Joanne Sanford', 'FLL', false, false),
+    ('Josselyn Caja', 'ALU', false, true),
+    ('Clement Pierre', 'NAV', false, true),
+    ('Fiorella Salazar', null, false, false),
+    ('Ricardo Cardenas', 'LRC', true, true),
+    ('Alexis Garcia', 'BSH', false, false),
+    ('Felix Colmenares', 'LRC', false, false),
+    ('Breinner Colmenares', 'LRC', false, true)
+) as r(nombre, club_codigo, arbitro_activo, jugador_activo)
+left join public.club c on c.codigo = r.club_codigo;
