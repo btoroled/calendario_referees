@@ -92,7 +92,7 @@ from (
     ('Erick Taboada', 'ALU', false),
     ('Jonathan Valdivia', 'BSH', false),
     ('Lisbeth Ccarampa', 'ALU', false),
-    ('Marcelo Elias Brown', null, true),
+    ('Marcelo Elias Brown', null, false),
     ('Mathias Ccorihuaman', 'FLL', false),
     ('Renzo Figueroa', 'FLL', false),
     ('Sergio Charlo', 'NAV', false),
