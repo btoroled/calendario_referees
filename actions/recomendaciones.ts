@@ -131,8 +131,8 @@ export async function recomendarReferees(partidoId: string): Promise<ResultadoRe
     db.from('categoria_referee').select('nombre, orden'),
     db
       .from('referee')
-      .select('id, nombre, categoria, club_id, region_id, activo, club:club_id(nombre)')
-      .eq('activo', true)
+      .select('id, nombre, categoria, club_id, region_id, arbitro_activo, club:club_id(nombre)')
+      .eq('arbitro_activo', true)
       .eq('region_id', regionId),
   ])
 

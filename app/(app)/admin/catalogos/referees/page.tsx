@@ -28,7 +28,7 @@ export default async function RefereesPage() {
               </td>
               <td className="px-4 py-2">{r.categoria}</td>
               <td className="px-4 py-2">{r.club?.nombre ?? '—'}</td>
-              <td className="px-4 py-2">{r.activo ? 'Sí' : 'No'}</td>
+              <td className="px-4 py-2">{r.arbitro_activo ? 'Sí' : 'No'}</td>
             </tr>
           ))}
         </tbody>

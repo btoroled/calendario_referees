@@ -78,11 +78,11 @@ where id = (
 
 -- 5. Referees cargados a mano post-migración 0011 (vía UI de admin), nunca
 --    versionados hasta ahora — sin esto se pierden en cada `db reset`.
-update public.referee set nombre = 'Luis Lopez', activo = false where nombre = 'Lucho Lopez';
-update public.referee set activo = false where nombre in ('Jonathan Bauza', 'Wilmer Peralta');
+update public.referee set nombre = 'Luis Lopez', arbitro_activo = false where nombre = 'Lucho Lopez';
+update public.referee set arbitro_activo = false where nombre in ('Jonathan Bauza', 'Wilmer Peralta');
 
-insert into public.referee (nombre, categoria, club_id, region_id, activo)
-select r.nombre, 'Regional', c.id, '22222222-2222-2222-2222-222222222222', r.activo
+insert into public.referee (nombre, categoria, club_id, region_id, arbitro_activo)
+select r.nombre, 'Regional', c.id, '22222222-2222-2222-2222-222222222222', r.arbitro_activo
 from (
   values
     ('Alan Benavides', 'LRC', false),
@@ -97,7 +97,7 @@ from (
     ('Renzo Figueroa', 'FLL', false),
     ('Sergio Charlo', 'NAV', false),
     ('Vincenzo Caro', 'LRC', false)
-) as r(nombre, club_codigo, activo)
+) as r(nombre, club_codigo, arbitro_activo)
 left join public.club c on c.codigo = r.club_codigo;
 
 -- 6. jugador_activo: releva quién es referee y también jugador activo hoy.
