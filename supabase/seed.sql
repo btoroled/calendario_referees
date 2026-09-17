@@ -75,3 +75,27 @@ where id = (
   order by nombre
   limit 1
 );
+
+-- 5. Referees cargados a mano post-migración 0011 (vía UI de admin), nunca
+--    versionados hasta ahora — sin esto se pierden en cada `db reset`.
+update public.referee set nombre = 'Luis Lopez', activo = false where nombre = 'Lucho Lopez';
+update public.referee set activo = false where nombre in ('Jonathan Bauza', 'Wilmer Peralta');
+
+insert into public.referee (nombre, categoria, club_id, region_id, activo)
+select r.nombre, 'Regional', c.id, '22222222-2222-2222-2222-222222222222', r.activo
+from (
+  values
+    ('Alan Benavides', 'LRC', false),
+    ('Benjamin Toro', null, true),
+    ('Brenda Llanos', 'BLU', false),
+    ('Carlos Achancaray', 'FLL', false),
+    ('Erick Taboada', 'ALU', false),
+    ('Jonathan Valdivia', 'BSH', false),
+    ('Lisbeth Ccarampa', 'ALU', false),
+    ('Marcelo Elias Brown', 'BLU', true),
+    ('Mathias Ccorihuaman', 'FLL', false),
+    ('Renzo Figueroa', 'FLL', false),
+    ('Sergio Charlo', 'NAV', false),
+    ('Vincenzo Caro', 'LRC', false)
+) as r(nombre, club_codigo, activo)
+left join public.club c on c.codigo = r.club_codigo;
